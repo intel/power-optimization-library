@@ -12,7 +12,7 @@ type Pool interface {
 	GetName() string
 	addCore(core Core) error
 	removeCore(core Core) error
-	removeCoreById(coreId int) (Core, error)
+	removeCoreByID(coreID int) (Core, error)
 	SetPowerProfile(profile Profile) error
 	GetPowerProfile() Profile
 	GetCores() []Core
@@ -69,7 +69,7 @@ func (pool *poolImpl) removeCore(core Core) error {
 	return pool.doRemoveCore(index)
 }
 
-func (pool *poolImpl) removeCoreById(coreId int) (Core, error) {
+func (pool *poolImpl) removeCoreByID(coreId int) (Core, error) {
 	index := -1
 	var coreObj Core
 	for i, core := range pool.Cores {

@@ -27,7 +27,6 @@ const (
 // returns node object with empty list of exclusive pools, and a default pool containing all cpus
 // by default all cpus are set to system reserved
 func CreateInstance(nodeName string) (Node, error) {
-
 	if err := preChecks(); err != nil {
 		return nil, errors.Wrap(err, "preChecks")
 	}
@@ -46,16 +45,13 @@ func CreateInstance(nodeName string) (Node, error) {
 }
 
 // getNumberOfCpus defined as var so can be mocked by the unit test
-var getNumberOfCpus = func() int {
-	return runtime.NumCPU()
-}
+var getNumberOfCpus = runtime.NumCPU
 
 // checks for "intel_pstate" driver required by power library
 func preChecks() error {
-	driver, _ := readCoreStringProperty(0, scalingDrvFile)
-
-	if driver != "intel_pstate" {
-		return errors.Errorf("unsupported driver")
+	driver, err := readCoreStringProperty(0, scalingDrvFile)
+	if driver != "intel_pstate" || err != nil {
+		return errors.Errorf("failed to determine or unsupported driver")
 	}
 	return nil
 }

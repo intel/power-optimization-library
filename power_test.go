@@ -9,7 +9,7 @@ import (
 
 func Test_diff(t *testing.T) {
 	all := make([]Core, 8)
-	for i, _ := range all {
+	for i := range all {
 		mck := new(coreMock)
 		mck.On("GetID").Return(i)
 		all[i] = mck

@@ -26,7 +26,6 @@ func (m *coreMock) GetID() int {
 
 func (m *coreMock) setReserved(reserved bool) {
 	m.Called(reserved)
-	return
 }
 
 func (m *coreMock) getReserved() bool {
@@ -76,7 +75,6 @@ func TestNewCore(t *testing.T) {
 			"epp": "some",
 		},
 	}
-	//setupCoreTests(cpufiles)
 	defer setupCoreTests(cpufiles)()
 
 	core, err := newCore(0)
@@ -105,14 +103,14 @@ func TestCoreImpl_setGet(t *testing.T) {
 
 }
 func TestCoreImpl_updateValues(t *testing.T) {
-	setupCoreTests(map[string]map[string]string{
+	teardown := setupCoreTests(map[string]map[string]string{
 		"cpu0": {
 			"max": "9999",
 			"min": "999",
 			"epp": "some",
 		},
 	})
-	//defer teardown()
+	defer teardown()
 	const (
 		minFreqInit  = 999
 		maxFreqInit  = 9999

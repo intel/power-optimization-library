@@ -34,9 +34,6 @@ func TestPoolImpl_AddCore(t *testing.T) {
 	mockCore.On("updateValues", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("test err"))
 	assert.Error(p.addCore(mockCore))
 	mockCore.AssertCalled(t, "updateValues", mock.Anything, mock.Anything, mock.Anything)
-
-	//
-
 }
 
 func TestPoolImpl_RemoveCore(t *testing.T) {
@@ -73,12 +70,12 @@ func TestPoolImpl_RemoveCoreById(t *testing.T) {
 	pool := &poolImpl{Cores: []Core{mockCore0, mockCore1}}
 
 	// Happy path test
-	_, err := pool.removeCoreById(0)
+	_, err := pool.removeCoreByID(0)
 	assert.NoError(err)
 	assert.NotContains(pool.Cores, mockCore0)
 	assert.Contains(pool.Cores, mockCore1)
 
 	// attempt to remove core not in a pool
-	_, err = pool.removeCoreById(0)
+	_, err = pool.removeCoreByID(0)
 	assert.Error(err)
 }

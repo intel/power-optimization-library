@@ -89,12 +89,7 @@ func (core *coreImpl) writeScalingMaxFreq(freq int) error {
 	if err != nil {
 		return errors.Wrap(err, "writeScalingMaxFreq")
 	}
-	defer func(f *os.File) {
-		err := f.Close()
-		if err != nil {
-			// log
-		}
-	}(f)
+	defer f.Close()
 
 	_, err = f.WriteString(fmt.Sprint(freq))
 	if err != nil {
@@ -130,15 +125,14 @@ func (core *coreImpl) restoreValues() error {
 }
 
 // Get the CPU max frequency from sysfs
-//todo function closure to store result and read only form core 0 maybe?
-func readCoreIntProperty(coreId int, file string) (int, error) {
-	path := filepath.Join(basePath, fmt.Sprint("cpu", coreId), file)
+func readCoreIntProperty(coreID int, file string) (int, error) {
+	path := filepath.Join(basePath, fmt.Sprint("cpu", coreID), file)
 	return readIntFromFile(path)
 }
 
 // reads content of a file and returns it as a string
-func readCoreStringProperty(coreId int, file string) (string, error) {
-	path := filepath.Join(basePath, fmt.Sprint("cpu", coreId), file)
+func readCoreStringProperty(coreID int, file string) (string, error) {
+	path := filepath.Join(basePath, fmt.Sprint("cpu", coreID), file)
 	value, err := readStringFromFile(path)
 	if err != nil {
 		//log

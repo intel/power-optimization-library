@@ -66,16 +66,16 @@ func TestNodeImpl_RemoveExclusivePool(t *testing.T) {
 }
 
 func TestNodeImpl_initializeDefaultPool(t *testing.T) {
-	mockCpuData := map[string]string{
+	mockCPUData := map[string]string{
 		"min": "100",
 		"max": "123",
 		"epp": "epp",
 	}
 	mockedCores := map[string]map[string]string{
-		"cpu0": mockCpuData,
-		"cpu1": mockCpuData,
-		"cpu2": mockCpuData,
-		"cpu3": mockCpuData,
+		"cpu0": mockCPUData,
+		"cpu1": mockCPUData,
+		"cpu2": mockCPUData,
+		"cpu3": mockCPUData,
 	}
 	defer setupCoreTests(mockedCores)()
 	node := &nodeImpl{}
@@ -89,7 +89,7 @@ func TestNodeImpl_initializeDefaultPool(t *testing.T) {
 }
 func TestNodeImpl_AddSharedPool(t *testing.T) {
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		core.On("setReserved", false).Return()
@@ -123,7 +123,7 @@ func TestNodeImpl_AddSharedPool(t *testing.T) {
 func TestNodeImpl_RemoveCoreFromExclusivePool(t *testing.T) {
 	assert := assert.New(t)
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		core.On("updateValues", "", 0, 0).Return(nil)
@@ -157,7 +157,7 @@ func TestNodeImpl_RemoveCoreFromExclusivePool(t *testing.T) {
 func TestNodeImpl_AddCoresToExclusivePool(t *testing.T) {
 	assert := assert.New(t)
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		core.On("updateValues", "", 0, 0).Return(nil)
@@ -194,7 +194,7 @@ func TestNodeImpl_AddCoresToExclusivePool(t *testing.T) {
 
 func TestNodeImpl_UpdateProfile(t *testing.T) {
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("getReserved").Return(false)
 		core.On("GetID").Return(i)
@@ -222,7 +222,7 @@ func TestNodeImpl_UpdateProfile(t *testing.T) {
 func TestNodeImpl_RemoveSharedPool(t *testing.T) {
 	assert := assert.New(t)
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		core.On("restoreValues").Return(nil)
@@ -252,7 +252,7 @@ func TestNodeImpl_RemoveSharedPool(t *testing.T) {
 func TestNodeImpl_GetReservedCoreIds(t *testing.T) {
 	assert := assert.New(t)
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		if i < 2 {
@@ -316,7 +316,7 @@ func TestNodeImpl_GetExclusivePool(t *testing.T) {
 
 func TestNodeImpl_GetSharedPool(t *testing.T) {
 	cores := make([]Core, 4)
-	for i, _ := range cores {
+	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		if i < 2 {

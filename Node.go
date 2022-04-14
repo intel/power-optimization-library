@@ -75,7 +75,6 @@ func (node *nodeImpl) DeleteProfile(name string) error {
 		return errors.Errorf("DeleteProfile: profile with name %s not found", name)
 	}
 	return nil
-
 }
 
 // AddExclusivePool creates new empty pool with attached profile attached
@@ -138,9 +137,9 @@ func (node *nodeImpl) initializeDefaultPool() error {
 // all remaining cores on the system will be placed in the reserved pool and their power profile will be applied
 func (node *nodeImpl) AddSharedPool(coreIds []int, profile Profile) error {
 	cores := make([]Core, len(coreIds))
-	for i, coreId := range coreIds {
+	for i, coreID := range coreIds {
 		for _, core := range node.SharedPool.GetCores() {
-			if core.GetID() == coreId {
+			if core.GetID() == coreID {
 				cores[i] = core
 				continue
 			}
@@ -158,13 +157,13 @@ func (node *nodeImpl) AddSharedPool(coreIds []int, profile Profile) error {
 // core values of the pool are applied
 func (node *nodeImpl) AddCoresToExclusivePool(poolName string, coreIds []int) error {
 	var exclPool Pool
-	if index := node.findExclusivePoolByName(poolName); index < 0 {
+	index := node.findExclusivePoolByName(poolName)
+	if index < 0 {
 		return errors.Errorf("pool with name %s does not exist", poolName)
-	} else {
-		exclPool = node.ExclusivePools[index]
 	}
-	for _, coreId := range coreIds {
-		core, err := node.SharedPool.removeCoreById(coreId)
+	exclPool = node.ExclusivePools[index]
+	for _, coreID := range coreIds {
+		core, err := node.SharedPool.removeCoreByID(coreID)
 		if err != nil {
 			return errors.Wrap(err, "AddCoresToExclusivePool")
 		}
@@ -184,7 +183,7 @@ func (node *nodeImpl) RemoveCoresFromExclusivePool(poolName string, coreIds []in
 		return errors.Errorf("pool with name %s doesnt exsit", poolName)
 	}
 	for _, coreID := range coreIds {
-		core, err := node.ExclusivePools[index].removeCoreById(coreID)
+		core, err := node.ExclusivePools[index].removeCoreByID(coreID)
 		if err != nil {
 			return errors.Wrap(err, "RemoveCoresFromExclusivePool")
 		}
