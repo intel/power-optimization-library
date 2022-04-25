@@ -38,6 +38,9 @@ func (node *nodeImpl) GetName() string {
 // AddProfile combines profile creation and pool creation into one call
 func (node *nodeImpl) AddProfile(poolName string, minFreq int, maxFreq int, epp string) (Profile, error) {
 	profile := NewProfile(poolName, minFreq, maxFreq, epp)
+	if profile == nil {
+		return nil, errors.New("Invalid profile values")
+	}
 	var err error
 	if epp == "power" {
 		err = node.SharedPool.SetPowerProfile(profile)
