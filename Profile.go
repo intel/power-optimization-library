@@ -21,8 +21,8 @@ func NewProfile(name string, minFreq int, maxFreq int, epp string) Profile {
 	}
 	return &profileImpl{
 		Name: name,
-		Max:  maxFreq,
-		Min:  minFreq,
+		Max:  maxFreq * 1000,
+		Min:  minFreq * 1000,
 		Epp:  epp,
 	}
 }

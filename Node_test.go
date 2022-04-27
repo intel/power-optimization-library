@@ -198,7 +198,7 @@ func TestNodeImpl_UpdateProfile(t *testing.T) {
 		core := new(coreMock)
 		core.On("getReserved").Return(false)
 		core.On("GetID").Return(i)
-		core.On("updateValues", "", 1, 100).Return(nil)
+		core.On("updateValues", "", 1*1000, 100*1000).Return(nil)
 		cores[i] = core
 	}
 	node := nodeImpl{
@@ -213,7 +213,7 @@ func TestNodeImpl_UpdateProfile(t *testing.T) {
 
 	assert.Nil(t, node.UpdateProfile("powah", 1, 100, ""))
 	for _, core := range node.ExclusivePools[0].(*poolImpl).Cores {
-		core.(*coreMock).AssertCalled(t, "updateValues", "", 1, 100)
+		core.(*coreMock).AssertCalled(t, "updateValues", "", 1*1000, 100*1000)
 	}
 	assert.Equal(t, "powah", node.ExclusivePools[0].(*poolImpl).PowerProfile.(*profileImpl).Name)
 
@@ -284,7 +284,7 @@ func TestNodeImpl_AddProfile(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, profile, node.ExclusivePools[0].(*poolImpl).PowerProfile)
-	assert.Equal(t, 100, profile.GetMaxFreq())
+	assert.Equal(t, 100*1000, profile.GetMaxFreq())
 	assert.Equal(t, "poolname", node.ExclusivePools[0].(*poolImpl).Name)
 }
 

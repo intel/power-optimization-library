@@ -22,6 +22,6 @@ func TestNewProfile(t *testing.T) {
 
 	assert.Equal(t, "name", profile.(*profileImpl).Name)
 	assert.Equal(t, 0, profile.(*profileImpl).Min)
-	assert.Equal(t, 100, profile.(*profileImpl).Max)
+	assert.Equal(t, 100*1000, profile.(*profileImpl).Max)
 	assert.Equal(t, "epp", profile.(*profileImpl).Epp)
 }
