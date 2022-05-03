@@ -1,6 +1,7 @@
-# libraries.orchestrators.resourcemanagement.power.powerlibrary
+# Intel® Power Optimization Library
 
-The Power Library is intended to monitor the systems CPUs
+This is an open source library that will take the desired configuration of the user to tune the frequencies and set the 
+priority level of the cores. 
 
 # Overview
 
@@ -61,7 +62,7 @@ node.AddCoresToExclusivePool(name, []coreIds)
 This will move cores with specified ids for the shared pool to the exclusive pool. power profile of the exclusive pool
 will be applied to the core
 
-````
+````go
 node.RemoveCoresFromExclusivePool(name, []coreIds)
 ````
 
