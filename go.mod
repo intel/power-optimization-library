@@ -1,4 +1,4 @@
-module libraries.orchestrators.resourcemanagement.power.powerlibrary
+module github.com/intel/power-optimization-library
 
 go 1.17
 
