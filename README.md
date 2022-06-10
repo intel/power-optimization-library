@@ -5,6 +5,7 @@ priority level of the cores.
 
 # Overview
 The Power Optimization Library takes the desired configuration for the cores associated with Exclusive Pods and tune them based on the requested Power Profile. The Power Optimization Library will also facilitate the use of the Intel SST (Speed Select Technology) Suite (SST-BF - Speed Select Technology-Base Frequency, SST-CP - Speed Select Technology-Core Power, and Frequency Tuning).
+
 This library is currently used as part of the [Kubernetes Power Manager](https://github.com/intel/kubernetes-power-manager), but could be used with other utilities.
 
 
