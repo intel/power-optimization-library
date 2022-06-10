@@ -4,10 +4,9 @@ The Intel Power Optimization Library is an open source library that takes the de
 priority level of the cores. 
 
 # Overview
+The Power Optimization Library takes the desired configuration for the cores associated with Exclusive Pods and tune them based on the requested Power Profile. The Power Optimization Library will also facilitate the use of the Intel SST (Speed Select Technology) Suite (SST-BF - Speed Select Technology-Base Frequency, SST-CP - Speed Select Technology-Core Power, and Frequency Tuning).
+This library is currently used as part of the [Kubernetes Power Manager](https://github.com/intel/kubernetes-power-manager), but could be used with other utilities.
 
-The Power Optimization Library is an engine for the [Kubernetes Power Manager](https://github.com/intel/kubernetes-power-manager). 
-The Power Optimization Library takes the desired configuration for the cores associated with Exclusive Pods and tune them based
-on the requested Power Profile. The Power Optimization Library will also facilitate the use of the Intel SST (Speed Select Technology) Suite (SST-BF - Speed Select Technology-Base Frequency, SST-CP - Speed Select Technology-Core Power, and Frequency Tuning).
 
 # Definitions
 
@@ -156,7 +155,7 @@ value of the name and not the actual Power Profile, that can be retrieved throug
     Epp     string
 ````
 
-The Profile object is a replica of the Power Profile CRD used by the Power Manager. It’s just a way that the Power
+The Profile object is a replica of the Power Profile CRD. It’s just a way that the Power
 Library can get the information about a Power Profile without having to constantly query the Kubernetes API.
 
 ## Core
@@ -200,3 +199,27 @@ Core’s maximum and minimum frequencies to the absolute values instead of those
 Exclusive Pool will never be given a core from the system that is a part of the Reserved System CPU list. So when
 returned to the Shared Pool, if there is a Shared Power Workload available, it will take on the values in that, if not
 it is given the absolute values.
+
+
+# C-States
+To save energy on a system, you can command the CPU to go into a low-power mode. Each CPU has several power modes, which are collectively called C-States. These work by cutting the clock signal and power from idle CPUs, or CPUs that are not executing commands.While you save more energy by sending CPUs into deeper C-State modes, it does take more time for the CPU to fully “wake up” from sleep mode, so there is a tradeoff when it comes to deciding the depth of sleep.
+
+## C-State Implementation in the Power Optimization Library
+The driver that is used for C-States is the intel_idle driver. Everything associated with C-States in Linux is stored in the /sys/devices/system/cpu/cpuN/cpuidle file or the /sys/devices/system/cpu/cpuidle file. To check the driver in use, the user simply has to check the /sys/devices/system/cpu/cpuidle/current_driver file.
+
+C-States have to be confirmed if they are actually active on the system. If a user requests any C-States, they need to check on the system if they are activated and if they are not, reject the PowerConfig. The C-States are found in /sys/devices/system/cpu/cpuN/cpuidle/stateN/.
+
+## C-State Ranges
+````
+C0      Operating State
+C1      Halt
+C1E     Enhanced Halt
+C2      Stop Grant   
+C2E     Extended Stop Grant
+C3      Deep Sleep
+C4      Deeper Sleep
+C4E/C5  Enhanced Deeper Sleep
+C6      Deep Power Down
+````
+
+

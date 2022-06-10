@@ -1,6 +1,7 @@
 package power
 
 import (
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
@@ -38,7 +39,8 @@ func TestCreateInstance(t *testing.T) {
 	defer setupCoreTests(mockedCores)()
 
 	node, err := CreateInstance(nodeName)
-	assert.Nil(t, err)
+	var cStatesSupportError *CStatesSupportError
+	assert.ErrorAs(t, err, &cStatesSupportError)
 
 	assert.Equal(t, nodeName, node.GetName())
 	assert.Len(t, node.(*nodeImpl).SharedPool.(*poolImpl).Cores, len(mockedCores))
@@ -51,8 +53,14 @@ func TestPreChecks(t *testing.T) {
 	defer setupCoreTests(map[string]map[string]string{
 		"cpu0": {},
 	})()
+	err := preChecks()
+	var cStateErr *CStatesSupportError
+	assert.ErrorAs(t, err, &cStateErr)
 
-	assert.Nil(t, preChecks())
+	var sstBfErr *SSTBFSupportError
+	if errors.As(err, &sstBfErr) {
+		assert.False(t, true, "unexpected error type", err)
+	}
 
 	os.WriteFile(filepath.Join(basePath, "cpu0", scalingDrvFile), []byte("not intel\n"), 0664)
 	assert.Error(t, preChecks())
