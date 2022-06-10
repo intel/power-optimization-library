@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -33,7 +34,8 @@ func preChecksCStates() error {
 	if err != nil {
 		return &CStatesSupportError{"failed to determine driver"}
 	}
-	if driver != "intel_idle\n" && driver != "acpi_driver\n" {
+	driver = strings.TrimSuffix(driver, "\n")
+	if driver != "intel_idle" && driver != "acpi_driver" {
 		return &CStatesSupportError{"unsupported driver: " + driver}
 	}
 	return nil
