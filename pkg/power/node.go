@@ -1,12 +1,15 @@
 package power
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+)
 
 // The nodeImpl object holds all the information regarding a node in a cluster.
 type nodeImpl struct {
 	Name           string
 	ExclusivePools []Pool
 	SharedPool     Pool
+	allCores       []Core
 }
 
 type Node interface {
@@ -25,6 +28,10 @@ type Node interface {
 	GetProfile(name string) Profile
 	GetExclusivePool(name string) Pool
 	GetSharedPool() Pool
+	AvailableCStates() ([]string, error)
+	ApplyCStateToPool(poolName string, cStates map[string]bool) error
+	ApplyCStatesToCore(coreID int, cStates map[string]bool) error
+	IsCStateValid(cStates ...string) bool
 }
 
 func (node *nodeImpl) SetNodeName(name string) {
@@ -37,6 +44,9 @@ func (node *nodeImpl) GetName() string {
 
 // AddProfile combines profile creation and pool creation into one call
 func (node *nodeImpl) AddProfile(poolName string, minFreq int, maxFreq int, epp string) (Profile, error) {
+	if !IsFeatureSupported(SSTBFFeature) {
+		return nil, supportedFeatureErrors[SSTBFFeature]
+	}
 	profile := NewProfile(poolName, minFreq, maxFreq, epp)
 	if profile == nil {
 		return nil, errors.New("Invalid profile values")
@@ -54,6 +64,9 @@ func (node *nodeImpl) AddProfile(poolName string, minFreq int, maxFreq int, epp 
 // if exclusive pool is being deleted, cores are moved to the shared pool
 // ie shared pool is being deleted, cores are moved to the default pool
 func (node *nodeImpl) DeleteProfile(name string) error {
+	if !IsFeatureSupported(SSTBFFeature) {
+		return supportedFeatureErrors[SSTBFFeature]
+	}
 	found := false
 	for _, pool := range node.ExclusivePools {
 		if pool.GetPowerProfile() == nil {
@@ -132,6 +145,9 @@ func (node *nodeImpl) initializeDefaultPool() error {
 		Name:  sharedPoolName,
 		Cores: cores,
 	}
+	for _, core := range cores {
+		core.setPool(pool)
+	}
 	node.SharedPool = pool
 	return nil
 }
@@ -144,7 +160,6 @@ func (node *nodeImpl) AddSharedPool(coreIds []int, profile Profile) error {
 		for _, core := range node.SharedPool.GetCores() {
 			if core.GetID() == coreID {
 				cores[i] = core
-				continue
 			}
 		}
 	}
@@ -200,6 +215,9 @@ func (node *nodeImpl) RemoveCoresFromExclusivePool(poolName string, coreIds []in
 
 // UpdateProfile updates all values set for cores attached to that profile
 func (node *nodeImpl) UpdateProfile(name string, minFreq int, maxFreq int, epp string) error {
+	if !IsFeatureSupported(SSTBFFeature) {
+		return supportedFeatureErrors[SSTBFFeature]
+	}
 	for _, pool := range node.ExclusivePools {
 		if pool.GetPowerProfile() == nil {
 			continue
@@ -233,7 +251,7 @@ func (node *nodeImpl) RemoveSharedPool() error {
 	return errors.Wrap(err, "RemoveSharedPool")
 }
 
-// GetProfile returns Profile object attached to exclusive or shared pool with supplied name
+// GetProfile returns PowerProfile object attached to exclusive or shared pool with supplied name
 // returns nil if not found
 func (node *nodeImpl) GetProfile(name string) Profile {
 	if sharedProfile := node.SharedPool.GetPowerProfile(); sharedProfile != nil {
@@ -263,7 +281,7 @@ func (node *nodeImpl) GetExclusivePool(name string) Pool {
 	return nil
 }
 
-// GetSharedPool returns a Pool object containing power Profile, name and Cores
+// GetSharedPool returns a Pool object containing PowerProfile, name and Cores
 // that are not system reserved
 func (node *nodeImpl) GetSharedPool() Pool {
 	var notReserved []Core
@@ -277,4 +295,37 @@ func (node *nodeImpl) GetSharedPool() Pool {
 		Cores:        notReserved,
 		PowerProfile: node.SharedPool.GetPowerProfile(),
 	}
+}
+
+func (node *nodeImpl) AvailableCStates() ([]string, error) {
+	if !IsFeatureSupported(CStatesFeature) {
+		return nil, supportedFeatureErrors[CStatesFeature]
+	}
+	cStatesList := make([]string, 0)
+	for name := range cStatesNamesMap {
+		cStatesList = append(cStatesList, name)
+	}
+	return cStatesList, nil
+}
+func (node *nodeImpl) ApplyCStateToPool(poolName string, cStates map[string]bool) error {
+	index := node.findExclusivePoolByName(poolName)
+	if index < 0 {
+		return errors.Errorf("pool with the name %s does not exist", poolName)
+	}
+	return node.ExclusivePools[index].SetCStates(cStates)
+}
+
+func (node *nodeImpl) ApplyCStatesToCore(coreID int, cStates map[string]bool) error {
+	// we can expect this list to be ordered,
+	// node.allCores[coreID] should be core object for the correct core
+	return node.allCores[coreID].applyCStates(cStates)
+}
+
+func (node *nodeImpl) IsCStateValid(cStates ...string) bool {
+	for _, cState := range cStates {
+		if _, ok := cStatesNamesMap[cState]; !ok {
+			return false
+		}
+	}
+	return true
 }

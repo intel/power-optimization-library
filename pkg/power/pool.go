@@ -1,11 +1,15 @@
 package power
 
-import "github.com/pkg/errors"
+import (
+	"github.com/hashicorp/go-multierror"
+	"github.com/pkg/errors"
+)
 
 type poolImpl struct {
-	Name         string
-	Cores        []Core
-	PowerProfile Profile
+	Name           string
+	Cores          []Core
+	PowerProfile   Profile
+	CStatesProfile map[string]bool
 }
 
 type Pool interface {
@@ -17,6 +21,8 @@ type Pool interface {
 	GetPowerProfile() Profile
 	GetCores() []Core
 	GetCoreIds() []int
+	SetCStates(states map[string]bool) error
+	getCStates() map[string]bool
 }
 
 func (pool *poolImpl) GetName() string {
@@ -27,26 +33,33 @@ func (pool *poolImpl) GetPowerProfile() Profile {
 	return pool.PowerProfile
 }
 
+func (pool *poolImpl) getCStates() map[string]bool {
+	return pool.CStatesProfile
+}
+
 func (pool *poolImpl) addCore(core Core) error {
 	for _, v := range pool.Cores {
 		if v == core {
 			return errors.Errorf("core %d already in the pool", core.GetID())
 		}
 	}
-	if pool.PowerProfile != nil {
-		err := core.updateValues(
-			pool.PowerProfile.GetEpp(),
-			pool.PowerProfile.GetMinFreq(),
-			pool.PowerProfile.GetMaxFreq(),
-		)
-		if err != nil {
-			return errors.Wrap(err, "SetPowerProfile")
+	if IsFeatureSupported(SSTBFFeature) {
+		if pool.PowerProfile != nil {
+			err := core.updateFreqValues(
+				pool.PowerProfile.GetEpp(),
+				pool.PowerProfile.GetMinFreq(),
+				pool.PowerProfile.GetMaxFreq(),
+			)
+			if err != nil {
+				return errors.Wrap(err, "SetPowerProfile")
+			}
+		} else {
+			err := core.restoreFrequencies()
+			if err != nil {
+				return errors.Wrap(err, "SetPowerProfile")
+			}
 		}
-	} else {
-		err := core.restoreValues()
-		if err != nil {
-			return errors.Wrap(err, "SetPowerProfile")
-		}
+		core.setPool(pool)
 	}
 	pool.Cores = append(pool.Cores, core)
 	return nil
@@ -100,13 +113,16 @@ func (pool *poolImpl) GetCores() []Core {
 // SetPowerProfile will set new power profile for the pool configuration of all cores in the pool will be updated
 // nil will reset cores to their default values
 func (pool *poolImpl) SetPowerProfile(profile Profile) error {
+	if !IsFeatureSupported(SSTBFFeature) {
+		return supportedFeatureErrors[SSTBFFeature]
+	}
 	pool.PowerProfile = profile
 	if profile != nil {
 		for _, core := range pool.Cores {
 			if core.getReserved() {
 				continue
 			}
-			err := core.updateValues(
+			err := core.updateFreqValues(
 				profile.GetEpp(),
 				profile.GetMinFreq(),
 				profile.GetMaxFreq(),
@@ -118,7 +134,7 @@ func (pool *poolImpl) SetPowerProfile(profile Profile) error {
 	} else {
 		for _, core := range pool.Cores {
 			if !core.getReserved() {
-				err := core.restoreValues()
+				err := core.restoreFrequencies()
 				if err != nil {
 					return errors.Wrap(err, "SetPowerProfile")
 				}
@@ -132,4 +148,25 @@ func (pool *poolImpl) doRemoveCore(index int) error {
 	pool.Cores[index] = pool.Cores[len(pool.Cores)-1]
 	pool.Cores = pool.Cores[:len(pool.Cores)-1]
 	return nil
+}
+
+func (pool *poolImpl) SetCStates(states map[string]bool) error {
+	if !IsFeatureSupported(CStatesFeature) {
+		return supportedFeatureErrors[CStatesFeature]
+	}
+	// check if requested states are on the system
+	for name := range states {
+		if _, exists := cStatesNamesMap[name]; !exists {
+			return errors.Errorf("C-state %s does not exist on this system", name)
+		}
+	}
+	pool.CStatesProfile = states
+	var applyErrors = new(multierror.Error)
+	for _, core := range pool.Cores {
+		if core.exclusiveCStates() {
+			continue
+		}
+		multierror.Append(applyErrors, core.applyCStates(states))
+	}
+	return applyErrors.ErrorOrNil()
 }

@@ -4,8 +4,7 @@ type profileImpl struct {
 	Name string
 	Max  int
 	Min  int
-	// could be enum
-	Epp string
+	Epp  string
 }
 
 type Profile interface {
