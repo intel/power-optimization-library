@@ -35,7 +35,7 @@ func preChecksCStates() error {
 		return &CStatesSupportError{"failed to determine driver"}
 	}
 	driver = strings.TrimSuffix(driver, "\n")
-	if driver != "intel_idle" && driver != "acpi_driver" {
+	if driver != "intel_idle" && driver != "acpi_idle" {
 		return &CStatesSupportError{"unsupported driver: " + driver}
 	}
 	return nil
