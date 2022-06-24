@@ -166,7 +166,7 @@ func (pool *poolImpl) SetCStates(states map[string]bool) error {
 		if core.exclusiveCStates() {
 			continue
 		}
-		multierror.Append(applyErrors, core.applyCStates(states))
+		applyErrors = multierror.Append(applyErrors, core.applyCStates(states))
 	}
 	return applyErrors.ErrorOrNil()
 }
