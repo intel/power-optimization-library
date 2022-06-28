@@ -92,9 +92,6 @@ func (pool *poolImpl) removeCoreByID(coreId int) (Core, error) {
 	if index < 0 {
 		return nil, errors.Errorf("core id %d not found in pool %s", coreId, pool.Name)
 	}
-	if coreObj.getReserved() {
-		return coreObj, errors.Errorf("Core %d is system reserved and cannot be moved", coreId)
-	}
 	return coreObj, pool.doRemoveCore(index)
 }
 

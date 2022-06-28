@@ -27,7 +27,6 @@ var supportedFeatureErrors = map[int]error{
 // returns node object with empty list of exclusive pools, and a default pool containing all cpus
 // by default all cpus are set to system reserved
 func CreateInstance(nodeName string) (Node, error) {
-	// TODO this will need to change in manager
 	var allErrors *multierror.Error
 	checks := preChecks()
 	// if more or equal errors than supported features has occurred
@@ -112,4 +111,8 @@ func IsFeatureSupported(features ...int) bool {
 		}
 	}
 	return true
+}
+
+func FeatureSupportError(feature int) error {
+	return supportedFeatureErrors[feature]
 }
