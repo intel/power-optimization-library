@@ -458,6 +458,7 @@ func (s *nodeTestsSuite) TestAvailableCStates() {
 func (s nodeTestsSuite) TestApplyCStatesToCore() {
 	mockedCore := new(coreMock)
 	mockedCore.On("applyCStates", mock.Anything).Return(nil)
+	mockedCore.On("setReserved", true)
 	node := &nodeImpl{
 		allCores: []Core{mockedCore},
 	}
