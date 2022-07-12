@@ -9,6 +9,59 @@ import (
 	"testing"
 )
 
+type mockPool struct {
+	mock.Mock
+}
+
+func (m *mockPool) GetName() string {
+	return ""
+}
+
+func (m *mockPool) addCore(core Core) error {
+	args := m.Called(core)
+	return args.Error(0)
+}
+
+func (m *mockPool) removeCore(core Core) error {
+	args := m.Called(core)
+	return args.Error(0)
+}
+
+func (m *mockPool) removeCoreByID(coreID int) (Core, error) {
+	args := m.Called(coreID)
+	return args.Get(0).(Core), args.Error(1)
+}
+
+func (m *mockPool) SetPowerProfile(profile Profile) error {
+	args := m.Called(profile)
+	return args.Error(0)
+}
+
+func (m *mockPool) GetPowerProfile() Profile {
+	args := m.Called()
+	return args.Get(0).(Profile)
+}
+
+func (m *mockPool) GetCores() []Core {
+	args := m.Called()
+	return args.Get(0).([]Core)
+}
+
+func (m *mockPool) GetCoreIds() []int {
+	args := m.Called()
+	return args.Get(0).([]int)
+}
+
+func (m *mockPool) SetCStates(states map[string]bool) error {
+	args := m.Called(states)
+	return args.Error(0)
+}
+
+func (m *mockPool) getCStates() map[string]bool {
+	args := m.Called()
+	return args.Get(0).(map[string]bool)
+}
+
 type poolTestSuite struct {
 	suite.Suite
 }
