@@ -29,6 +29,7 @@ type Node interface {
 	GetExclusivePool(name string) Pool
 	GetSharedPool() Pool
 	AvailableCStates() ([]string, error)
+	ApplyCStatesToSharedPool(cStates map[string]bool) error
 	ApplyCStateToPool(poolName string, cStates map[string]bool) error
 	ApplyCStatesToCore(coreID int, cStates map[string]bool) error
 	IsCStateValid(cStates ...string) bool
@@ -307,6 +308,10 @@ func (node *nodeImpl) AvailableCStates() ([]string, error) {
 	}
 	return cStatesList, nil
 }
+func (node *nodeImpl) ApplyCStatesToSharedPool(cStates map[string]bool) error {
+	return node.SharedPool.SetCStates(cStates)
+}
+
 func (node *nodeImpl) ApplyCStateToPool(poolName string, cStates map[string]bool) error {
 	index := node.findExclusivePoolByName(poolName)
 	if index < 0 {
@@ -318,6 +323,16 @@ func (node *nodeImpl) ApplyCStateToPool(poolName string, cStates map[string]bool
 func (node *nodeImpl) ApplyCStatesToCore(coreID int, cStates map[string]bool) error {
 	// we can expect this list to be ordered,
 	// node.allCores[coreID] should be core object for the correct core
+	core := node.allCores[coreID]
+	if cStates == nil {
+		core.setReserved(false)
+		if core.getPool().getCStates() != nil {
+			return core.applyCStates(core.getPool().getCStates())
+		} else {
+			return core.restoreDefaultCStates()
+		}
+	}
+	core.setReserved(true)
 	return node.allCores[coreID].applyCStates(cStates)
 }
 
