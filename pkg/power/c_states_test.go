@@ -23,7 +23,7 @@ func setupCoreCStatesTests(cpufiles map[string]map[string]map[string]string) fun
 
 	for cpu, states := range cpufiles {
 		if cpu == "driver" {
-			os.MkdirAll(filepath.Join(basePath, strings.Split(cStatesDrvPath, "/")[0]), 0644)
+			os.MkdirAll(filepath.Join(basePath, strings.Split(cStatesDrvPath, "/")[0]), os.ModePerm)
 			for driver := range states {
 				os.WriteFile(filepath.Join(basePath, cStatesDrvPath), []byte(driver), 0644)
 				break
@@ -31,9 +31,9 @@ func setupCoreCStatesTests(cpufiles map[string]map[string]map[string]string) fun
 			continue
 		}
 		cpuStatesDir := filepath.Join(basePath, cpu, cStatesDir)
-		os.MkdirAll(filepath.Join(cpuStatesDir), 0644)
+		os.MkdirAll(filepath.Join(cpuStatesDir), os.ModePerm)
 		for state, props := range states {
-			os.Mkdir(filepath.Join(cpuStatesDir, state), 0644)
+			os.Mkdir(filepath.Join(cpuStatesDir, state), os.ModePerm)
 			for propFile, value := range props {
 				os.WriteFile(filepath.Join(cpuStatesDir, state, propFile), []byte(value), 0644)
 			}

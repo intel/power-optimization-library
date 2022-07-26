@@ -74,7 +74,7 @@ func setupCoreTests(cpufiles map[string]map[string]string) func() {
 
 	for cpuName, cpuDetails := range cpufiles {
 		cpudir := filepath.Join(basePath, cpuName)
-		os.MkdirAll(filepath.Join(cpudir, "cpufreq"), 0644)
+		os.MkdirAll(filepath.Join(cpudir, "cpufreq"), os.ModePerm)
 		os.WriteFile(filepath.Join(cpudir, scalingDrvFile), []byte("intel_pstate\n"), 0664)
 		for prop, value := range cpuDetails {
 			switch prop {
