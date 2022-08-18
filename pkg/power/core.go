@@ -2,11 +2,12 @@ package power
 
 import (
 	"fmt"
-	"github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hashicorp/go-multierror"
+	"github.com/pkg/errors"
 )
 
 type coreImpl struct {
@@ -30,6 +31,7 @@ type Core interface {
 	exclusiveCStates() bool
 	ApplyExclusiveCStates(cStates map[string]bool) error
 	restoreDefaultCStates() error
+	preCheckPolicy(epp string) error
 }
 
 func newCore(coreID int) (Core, error) {
@@ -93,6 +95,10 @@ func (core *coreImpl) updateFreqValues(epp string, minFreq int, maxFreq int) err
 		return nil
 	}
 	if epp != "" {
+		err = core.preCheckPolicy(epp)
+		if err != nil {
+			return errors.Wrapf(err, "could not set EPP value for core %d", core.ID)
+		}
 		err = core.writeEppValue(epp)
 		if err != nil {
 			return errors.Wrapf(err, "failed to set EPP value for core %d", core.ID)
@@ -199,6 +205,18 @@ func (core *coreImpl) ApplyExclusiveCStates(cStates map[string]bool) error {
 		core.hasExclusiveCStates = true
 	}
 	return err.ErrorOrNil()
+}
+
+// Precheck the current cpu core policy before setting the EPP value
+func (core *coreImpl) preCheckPolicy(epp string) error {
+	policy, err := readCoreStringProperty(core.ID, scalingGovFile)
+	if err != nil {
+		return errors.Wrapf(err, "could not read the policy of coreID%d", core.ID)
+	}
+	if policy == cpufreqPolicyPerf && epp != cpufreqPolicyPerf {
+		return errors.Errorf("coreID%d policy is performance, it could not set EPP to any different value", core.ID)
+	}
+	return nil
 }
 
 // Get the CPU max frequency from sysfs

@@ -2,14 +2,15 @@ package power
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 type coreMock struct {
@@ -61,6 +62,10 @@ func (m *coreMock) restoreFrequencies() error {
 }
 
 func (m *coreMock) restoreDefaultCStates() error {
+	return m.Called().Error(0)
+}
+
+func (m *coreMock) preCheckPolicy(epp string) error {
 	return m.Called().Error(0)
 }
 
@@ -118,7 +123,7 @@ func TestNewCore(t *testing.T) {
 		IsReservedSystemCPU: true,
 	}, core)
 
-	supportedFeatureErrors[SSTBFFeature] = errors.New("sstbf not workin")
+	supportedFeatureErrors[SSTBFFeature] = errors.New("sstbf not working")
 	core, err = newCore(1)
 
 	assert.Equal(t, core, &coreImpl{ID: 1, IsReservedSystemCPU: true})

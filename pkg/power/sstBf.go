@@ -7,9 +7,11 @@ const (
 	scalingMinFile = "cpufreq/scaling_min_freq"
 	eppFile        = "cpufreq/energy_performance_preference"
 	scalingDrvFile = "cpufreq/scaling_driver"
+	scalingGovFile = "cpufreq/scaling_governor"
 
-	sharedPoolName = "shared"
-	defaultEpp     = "balance_performance"
+	sharedPoolName    = "shared"
+	defaultEpp        = "balance_performance"
+	cpufreqPolicyPerf = "performance"
 )
 
 type SSTBFSupportError struct {
