@@ -52,14 +52,14 @@ func (m *mockPool) GetCoreIds() []int {
 	return args.Get(0).([]int)
 }
 
-func (m *mockPool) SetCStates(states map[string]bool) error {
+func (m *mockPool) SetCStates(states CStates) error {
 	args := m.Called(states)
 	return args.Error(0)
 }
 
-func (m *mockPool) getCStates() map[string]bool {
+func (m *mockPool) getCStates() CStates {
 	args := m.Called()
-	return args.Get(0).(map[string]bool)
+	return args.Get(0).(CStates)
 }
 
 type poolTestSuite struct {
@@ -70,14 +70,14 @@ func TestPool(t *testing.T) {
 	suite.Run(t, new(poolTestSuite))
 }
 func (s *poolTestSuite) BeforeTest(suiteName, testName string) {
-	supportedFeatureErrors[SSTBFFeature] = nil
+	supportedFeatureErrors[PStatesFeature] = nil
 	supportedFeatureErrors[CStatesFeature] = nil
 	cStatesNamesMap = map[string]int{"C1": 1, "C2": 2}
 }
 
 func (s *poolTestSuite) AfterTest(suiteName, testName string) {
-	supportedFeatureErrors[SSTBFFeature] = uninitialisedErr
-	supportedFeatureErrors[CStatesFeature] = uninitialisedErr
+	supportedFeatureErrors[PStatesFeature] = &uninitialisedErr
+	supportedFeatureErrors[CStatesFeature] = &uninitialisedErr
 	cStatesNamesMap = map[string]int{}
 }
 
@@ -85,32 +85,38 @@ func (s *poolTestSuite) TestAddCore() {
 	mockCore := new(coreMock)
 	p := &poolImpl{
 		PowerProfile: &profileImpl{
-			Max: 123,
-			Min: 100,
-			Epp: "epp",
+			Max:      123,
+			Min:      100,
+			Epp:      "epp",
+			Governor: cpuPolicyPowersave,
 		},
 	}
 
 	// happy path
 	mockCore.On("setPool", mock.Anything).Return()
-	mockCore.On("updateFreqValues", "epp", 100, 123).Return(nil)
+	mockCore.On("updateFreqValues", cpuPolicyPowersave, "epp", 100, 123).Return(nil)
+	mockCore.On("exclusiveCStates").Return(true)
 	s.NoError(p.addCore(mockCore))
 	mockCore.AssertExpectations(s.T())
 	s.Contains(p.Cores, mockCore)
 
-	// attempting to add existing core - expecting error
+	// attempting to add existing core - expecting Error
 	mockCore.On("GetID").Return(0)
 	s.Error(p.addCore(mockCore))
 
 	// Simulate failure to update cpu files
 	mockCore = new(coreMock)
-	mockCore.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("test err"))
+	mockCore.On("exclusiveCStates").Return(true)
+	mockCore.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("test err"))
 	s.Error(p.addCore(mockCore))
-	mockCore.AssertCalled(s.T(), "updateFreqValues", mock.Anything, mock.Anything, mock.Anything)
+	mockCore.AssertCalled(s.T(), "updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	// ensure no attempt to make changes is made if SSTBF is not supported on the system
 	mockCore = new(coreMock)
-	supportedFeatureErrors[SSTBFFeature] = errors.New("error")
+	mockCore.On("exclusiveCStates").Return(true)
+	mockCore.On("setPool", p)
+	e := errors.New("Error")
+	supportedFeatureErrors[PStatesFeature] = &e
 	s.NoError(p.addCore(mockCore))
 	mockCore.AssertNotCalled(s.T(), "updateFreqValues")
 }
@@ -158,7 +164,7 @@ func (s *poolTestSuite) TestRemoveCoreById() {
 }
 
 func (s *poolTestSuite) TestSetCStates() {
-	states := map[string]bool{"C2": true, "C1": false}
+	states := CStates{"C2": true, "C1": false}
 	cores := make([]Core, 2)
 	for i := range cores {
 		core := new(coreMock)
@@ -202,6 +208,7 @@ func (s *poolTestSuite) TestSetCStates() {
 		core.(*coreMock).AssertNotCalled(s.T(), "applyCStates")
 	}
 
-	supportedFeatureErrors[CStatesFeature] = errors.New("")
-	assert.ErrorIs(s.T(), (&poolImpl{}).SetCStates(states), supportedFeatureErrors[CStatesFeature])
+	e := errors.New("")
+	supportedFeatureErrors[CStatesFeature] = &e
+	assert.ErrorIs(s.T(), (&poolImpl{}).SetCStates(states), *supportedFeatureErrors[CStatesFeature])
 }

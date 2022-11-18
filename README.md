@@ -48,7 +48,8 @@ no changes are made to the Cores' configuration, and an empty list of Exclusive 
 to the Cores.
 
 ````go
-node.AddSharedPool([]reservedCpuIds, powerlib.NewProfile(name, minFreq, maxFreq, epp))
+powerProfile, err:=powerlib.NewProfile(name, minFreq, maxFreq, governor, epp)
+node.AddSharedPool([]reservedCpuIds, powerProfile)
 ````
 
 Creates the shared pool. This call takes all the Cores we want to keep as reserved. All Cores that are **not** passed to
@@ -150,10 +151,11 @@ value of the name and not the actual Power Profile, that can be retrieved throug
 ## Profile
 
 ````
-    Name    string
-    Max     int
-    Min     int
-    Epp     string
+    Name     string
+    Max      int
+    Min      int
+    Governor string
+    Epp      string
 ````
 
 The Profile object is a replica of the Power Profile CRD. It’s just a way that the Power
@@ -223,4 +225,7 @@ C4E/C5  Enhanced Deeper Sleep
 C6      Deep Power Down
 ````
 
-
+P-State Governor
+The P-state governor feature allows the user to check if the P-state driver is enabled on the system. If the P-state driver is enabled while using the Kubernetes Power Manger, users may select a P-state governor per core, which are described as "performance" and "powersave" governors in the Power Profiles.
+• Performance governor - The CPUfreq governor "performance" sets the CPU statically to the highest frequency within the borders of scaling_min_freq and scaling_max_freq.
+• Powersave governor - The CPUfreq governor "powersave" sets the CPU statically to the lowest frequency within the borders of scaling_min_freq and scaling_max_freq.
