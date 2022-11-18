@@ -10,25 +10,41 @@ import (
 )
 
 const (
-	SSTBFFeature = iota
+	PStatesFeature = iota
 	CStatesFeature
 )
+
+type featureStatus struct {
+	Feature int
+	Name    string
+	Driver  string
+	Error   error
+}
+
+type FeatureSet map[int]featureStatus
 
 var basePath = "/sys/devices/system/cpu"
 
 var uninitialisedErr = errors.New("uninitialised")
 
-var supportedFeatureErrors = map[int]error{
-	SSTBFFeature:   uninitialisedErr,
-	CStatesFeature: uninitialisedErr,
+// map to pointers
+// created with default values to generic uninitialised Error
+// properly set during library initialization in pre-checks function
+// pre-checks updates this to point to errors stored in actual struct
+var supportedFeatureErrors = map[int]*error{
+	PStatesFeature: &uninitialisedErr,
+	CStatesFeature: &uninitialisedErr,
 }
 
 // CreateInstance initialises the power library
-// returns node object with empty list of exclusive pools, and a default pool containing all cpus
+// returns Node with empty list of exclusive pools, and a default pool containing all cpus
 // by default all cpus are set to system reserved
+// if no features are supported on the system returns nil
+// Returns multierror for each unsupported Feature or nil if all supported
 func CreateInstance(nodeName string) (Node, error) {
 	var allErrors *multierror.Error
-	checks := preChecks()
+	features, checks := preChecks()
+
 	// if more or equal errors than supported features has occurred
 	if checks.Len() >= len(supportedFeatureErrors) {
 		return nil, errors.Wrap(checks, "preChecks")
@@ -36,16 +52,17 @@ func CreateInstance(nodeName string) (Node, error) {
 	allErrors = multierror.Append(allErrors, errors.Wrap(checks.ErrorOrNil(), "preChecks"))
 
 	if nodeName == "" {
-		return nil, multierror.Append(errors.Errorf("node name cannot be empty"))
+		return nil, multierror.Append(errors.Errorf("node Name cannot be empty"))
 	}
 
 	node := &nodeImpl{
 		Name:           nodeName,
 		ExclusivePools: make([]Pool, 0),
+		featureStates:  features,
 	}
 
 	if err := node.initializeDefaultPool(); err != nil {
-		return nil, multierror.Append(allErrors, errors.Wrap(checks, "CreateInstance"))
+		return nil, multierror.Append(allErrors, errors.Wrap(err, "initDefaultPool"))
 	}
 	// store list of all cores
 	// at this point all cores are in the share pool, so we can copy it
@@ -64,24 +81,27 @@ func CreateInstance(nodeName string) (Node, error) {
 // getNumberOfCpus defined as var so can be mocked by the unit test
 var getNumberOfCpus = runtime.NumCPU
 
-// performs all pre-checks (driver etc.)
+// performs all pre-checks (Driver etc.)
 // sets supportedFeatureErrors map
-func preChecks() *multierror.Error {
-	var results *multierror.Error
+func preChecks() (FeatureSet, *multierror.Error) {
+	var allErrors *multierror.Error
+	features := FeatureSet{}
 
-	sstBfErr := preChecksSSTBF()
-	supportedFeatureErrors[SSTBFFeature] = sstBfErr
-	results = multierror.Append(results, sstBfErr)
+	pStates := preChecksPStates()
+	features[PStatesFeature] = pStates
+	supportedFeatureErrors[PStatesFeature] = &pStates.Error
+	allErrors = multierror.Append(allErrors, pStates.Error)
 
-	cStatesErr := preChecksCStates()
-	supportedFeatureErrors[CStatesFeature] = cStatesErr
-	results = multierror.Append(results, cStatesErr)
+	cStates := preChecksCStates()
+	features[CStatesFeature] = cStates
+	supportedFeatureErrors[CStatesFeature] = &cStates.Error
+	allErrors = multierror.Append(allErrors, cStates.Error)
 
-	return results
+	return features, allErrors
 }
 
 // reads a file from a path, parses contents as an int a returns the value
-// returns error if any step fails
+// returns Error if any step fails
 func readIntFromFile(filePath string) (int, error) {
 	valueString, err := readStringFromFile(filePath)
 	if err != nil {
@@ -106,13 +126,9 @@ func readStringFromFile(filePath string) (string, error) {
 
 func IsFeatureSupported(features ...int) bool {
 	for _, feature := range features {
-		if supportedFeatureErrors[feature] != nil {
+		if supportedFeatureErrors[feature] != nil && *supportedFeatureErrors[feature] != nil {
 			return false
 		}
 	}
 	return true
-}
-
-func FeatureSupportError(feature int) error {
-	return supportedFeatureErrors[feature]
 }

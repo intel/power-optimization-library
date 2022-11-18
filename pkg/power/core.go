@@ -19,23 +19,23 @@ type coreImpl struct {
 }
 
 type Core interface {
-	updateFreqValues(epp string, minFreq int, maxFreq int) error
+	updateFreqValues(governor string, epp string, minFreq int, maxFreq int) error
 	GetID() int
 	setReserved(reserved bool)
 	getReserved() bool
 	restoreFrequencies() error
-	applyCStates(desiredCStates map[string]bool) error
+	applyCStates(desiredCStates CStates) error
 	setPool(pool Pool)
 	getPool() Pool
 	exclusiveCStates() bool
-	ApplyExclusiveCStates(cStates map[string]bool) error
+	ApplyExclusiveCStates(cStates CStates) error
 	restoreDefaultCStates() error
 }
 
 func newCore(coreID int) (Core, error) {
 	core := &coreImpl{ID: coreID, IsReservedSystemCPU: true}
 
-	if IsFeatureSupported(SSTBFFeature) {
+	if IsFeatureSupported(PStatesFeature) {
 		// read sst-bf properties only if sst-bf is supported
 		minFreq, err := readCoreIntProperty(coreID, cpuMinFreqFile)
 		if err != nil {
@@ -50,7 +50,7 @@ func newCore(coreID int) (Core, error) {
 		core.MaximumFreq = maxFreq
 	}
 
-	return core, supportedFeatureErrors[SSTBFFeature]
+	return core, *supportedFeatureErrors[PStatesFeature]
 }
 func (core *coreImpl) setReserved(reserved bool) {
 	core.IsReservedSystemCPU = reserved
@@ -74,16 +74,16 @@ func (core *coreImpl) exclusiveCStates() bool {
 }
 
 func (core *coreImpl) restoreDefaultCStates() error {
-	defaultCStates := map[string]bool{}
+	defaultCStates := CStates{}
 	// enable all the c
 	for stateName := range cStatesNamesMap {
 		defaultCStates[stateName] = true
 	}
 	return core.applyCStates(defaultCStates)
 }
-func (core *coreImpl) updateFreqValues(epp string, minFreq int, maxFreq int) error {
-	if !IsFeatureSupported(SSTBFFeature) {
-		return supportedFeatureErrors[SSTBFFeature]
+func (core *coreImpl) updateFreqValues(governor string, epp string, minFreq int, maxFreq int) error {
+	if !IsFeatureSupported(PStatesFeature) {
+		return *supportedFeatureErrors[PStatesFeature]
 	}
 	var err error
 	if minFreq > maxFreq {
@@ -91,6 +91,10 @@ func (core *coreImpl) updateFreqValues(epp string, minFreq int, maxFreq int) err
 	}
 	if core.IsReservedSystemCPU {
 		return nil
+	}
+	err = core.writeGovernorValue(governor)
+	if err != nil {
+		return err
 	}
 	if epp != "" {
 		err = core.writeEppValue(epp)
@@ -111,6 +115,10 @@ func (core *coreImpl) updateFreqValues(epp string, minFreq int, maxFreq int) err
 
 func (core *coreImpl) writeEppValue(eppValue string) error {
 	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", core.ID), eppFile), []byte(eppValue), 0644)
+}
+
+func (core *coreImpl) writeGovernorValue(eppValue string) error {
+	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", core.ID), scalingGovFile), []byte(eppValue), 0644)
 }
 
 func (core *coreImpl) writeScalingMaxFreq(freq int) error {
@@ -158,10 +166,13 @@ func (core *coreImpl) writeScalingMinFreq(freq int) error {
 }
 
 func (core *coreImpl) restoreFrequencies() error {
-	return errors.Wrap(core.updateFreqValues(defaultEpp, core.MinimumFreq, core.MaximumFreq), "restoreFrequencies")
+	return errors.Wrap(core.updateFreqValues(defaultGovernor, defaultEpp, core.MinimumFreq, core.MaximumFreq), "restoreFrequencies")
 }
 
-func (core *coreImpl) applyCStates(desiredCStates map[string]bool) error {
+func (core *coreImpl) applyCStates(desiredCStates CStates) error {
+	if desiredCStates == nil {
+		return core.restoreDefaultCStates()
+	}
 	var applyingErrors *multierror.Error
 	for state, enabled := range desiredCStates {
 		stateFilePath := filepath.Join(
@@ -181,24 +192,20 @@ func (core *coreImpl) applyCStates(desiredCStates map[string]bool) error {
 	return applyingErrors.ErrorOrNil()
 }
 
-func (core *coreImpl) ApplyExclusiveCStates(cStates map[string]bool) error {
-	var err *multierror.Error
+func (core *coreImpl) ApplyExclusiveCStates(cStates CStates) error {
 	// wipe core specific configuration and apply pool one or default one
 	if cStates == nil {
-		if poolCStates := core.pool.getCStates(); poolCStates != nil {
-			// apply pool c states
-			err = multierror.Append(err, core.applyCStates(poolCStates))
-		} else {
-			// restore c states to defaults
-			err = multierror.Append(err, core.restoreDefaultCStates())
+		if err := core.applyCStates(core.pool.getCStates()); err != nil {
+			return err
 		}
 		core.hasExclusiveCStates = false
 	} else {
-		// apply requested c states
-		err = multierror.Append(err, core.applyCStates(cStates))
+		if err := core.applyCStates(cStates); err != nil {
+			return err
+		}
 		core.hasExclusiveCStates = true
 	}
-	return err.ErrorOrNil()
+	return nil
 }
 
 // Get the CPU max frequency from sysfs
@@ -224,7 +231,7 @@ func getAllCores() ([]Core, error) {
 	cores := make([]Core, num)
 	for i := 0; i < num; i++ {
 		core, err := newCore(i)
-		if err != nil && !errors.Is(err, supportedFeatureErrors[SSTBFFeature]) {
+		if err != nil && !errors.Is(err, *supportedFeatureErrors[PStatesFeature]) {
 			return nil, errors.Wrap(err, "getAllCores")
 		}
 		cores[i] = core

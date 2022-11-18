@@ -14,7 +14,7 @@ func setupCoreCStatesTests(cpufiles map[string]map[string]map[string]string) fun
 
 	origGetNumOfCpusFunc := getNumberOfCpus
 	getNumberOfCpus = func() int {
-		if _, ok := cpufiles["driver"]; ok {
+		if _, ok := cpufiles["Driver"]; ok {
 			return len(cpufiles) - 1
 		} else {
 			return len(cpufiles)
@@ -22,7 +22,7 @@ func setupCoreCStatesTests(cpufiles map[string]map[string]map[string]string) fun
 	}
 
 	for cpu, states := range cpufiles {
-		if cpu == "driver" {
+		if cpu == "Driver" {
 			os.MkdirAll(filepath.Join(basePath, strings.Split(cStatesDrvPath, "/")[0]), os.ModePerm)
 			for driver := range states {
 				os.WriteFile(filepath.Join(basePath, cStatesDrvPath), []byte(driver), 0644)
@@ -97,18 +97,21 @@ func TestCStatesSupportError_Error(t *testing.T) {
 }
 func TestCStates_preCheckCStates(t *testing.T) {
 	teardown := setupCoreCStatesTests(map[string]map[string]map[string]string{
-		"driver": {"intel_idle\n": nil},
+		"Driver": {"intel_idle\n": nil},
 	})
-
-	assert.Nil(t, preChecksCStates())
+	state := preChecksCStates()
+	assert.Equal(t, CStatesFeature, state.Feature)
+	assert.Equal(t, "C-States", state.Name)
+	assert.Equal(t, "intel_idle", state.Driver)
+	assert.Nil(t, state.Error)
 	teardown()
 
 	teardown = setupCoreCStatesTests(map[string]map[string]map[string]string{
-		"driver": {"unsupported something": nil},
+		"Driver": {"unsupported something": nil},
 	})
-	err := preChecksCStates()
-	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "unsupported"))
+	features := preChecksCStates()
+	assert.Error(t, features.Error)
+	assert.True(t, strings.Contains(features.Error.Error(), "unsupported"))
 
 	teardown()
 }
