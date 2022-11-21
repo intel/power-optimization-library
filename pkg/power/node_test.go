@@ -13,13 +13,13 @@ type nodeTestsSuite struct {
 }
 
 func (s *nodeTestsSuite) BeforeTest(suiteName, testName string) {
-	supportedFeatureErrors[SSTBFFeature] = nil
+	supportedFeatureErrors[PStatesFeature] = nil
 	supportedFeatureErrors[CStatesFeature] = nil
 }
 
 func (s *nodeTestsSuite) AfterTest(suiteName, testName string) {
-	supportedFeatureErrors[SSTBFFeature] = uninitialisedErr
-	supportedFeatureErrors[CStatesFeature] = uninitialisedErr
+	supportedFeatureErrors[PStatesFeature] = &uninitialisedErr
+	supportedFeatureErrors[CStatesFeature] = &uninitialisedErr
 }
 
 func TestNode(t *testing.T) {
@@ -28,7 +28,7 @@ func TestNode(t *testing.T) {
 
 func (s *nodeTestsSuite) TestSetGetName() {
 	initName := "hi mom"
-	newName := "new name"
+	newName := "new Name"
 	n := &nodeImpl{Name: initName}
 
 	s.Equal(initName, n.GetName())
@@ -58,9 +58,10 @@ func (s *nodeTestsSuite) TestAddExclusivePool() {
 func (s *nodeTestsSuite) TestRemoveExclusivePool() {
 	core := new(coreMock)
 	core.On("GetID").Return(0)
-	core.On("updateFreqValues", "", 0, 0).Return(nil)
+	core.On("updateFreqValues", "", "", 0, 0).Return(nil)
 	core.On("getReserved").Return(false)
 	core.On("setPool", mock.Anything).Return()
+	core.On("exclusiveCStates").Return(true)
 	p1 := &poolImpl{Name: "p1"}
 	p2 := &poolImpl{
 		Name:  "p2",
@@ -112,7 +113,9 @@ func (s *nodeTestsSuite) TestAddSharedPool() {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
 		core.On("setReserved", false).Return()
-		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		core.On("setReserved", true).Return()
+		core.On("restoreFrequencies").Return(nil)
+		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cores[i] = core
 	}
 
@@ -132,9 +135,9 @@ func (s *nodeTestsSuite) TestAddSharedPool() {
 	}
 	s.Nil(node.AddSharedPool([]int{0, 1}, profile))
 
-	cores[1].(*coreMock).AssertNotCalled(s.T(), "updateFreqValues", mock.Anything, mock.Anything, mock.Anything)
+	cores[1].(*coreMock).AssertNotCalled(s.T(), "updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	cores[2].(*coreMock).AssertCalled(s.T(), "setReserved", false)
-	cores[2].(*coreMock).AssertCalled(s.T(), "updateFreqValues", mock.Anything, mock.Anything, mock.Anything)
+	cores[2].(*coreMock).AssertCalled(s.T(), "updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	s.ElementsMatch(node.SharedPool.(*poolImpl).Cores, cores)
 }
@@ -144,9 +147,10 @@ func (s *nodeTestsSuite) TestRemoveCoreFromExclusivePool() {
 	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
-		core.On("updateFreqValues", "", 0, 0).Return(nil)
+		core.On("updateFreqValues", "", "", 0, 0).Return(nil)
 		core.On("getReserved").Return(false)
 		core.On("setPool", mock.Anything).Return()
+		core.On("exclusiveCStates").Return(true)
 		cores[i] = core
 	}
 	pool := &poolImpl{
@@ -169,8 +173,8 @@ func (s *nodeTestsSuite) TestRemoveCoreFromExclusivePool() {
 	s.Nil(node.RemoveCoresFromExclusivePool("test", coresToRemove))
 
 	s.ElementsMatch(node.ExclusivePools[0].(*poolImpl).Cores, coresToPreserve)
-	coresToPreserve[0].(*coreMock).AssertNotCalled(s.T(), "updateFreqValues", "", 0, 0)
-	node.SharedPool.(*poolImpl).Cores[0].(*coreMock).AssertCalled(s.T(), "updateFreqValues", "", 0, 0)
+	coresToPreserve[0].(*coreMock).AssertNotCalled(s.T(), "updateFreqValues", "", "", 0, 0)
+	node.SharedPool.(*poolImpl).Cores[0].(*coreMock).AssertCalled(s.T(), "updateFreqValues", "", "", 0, 0)
 }
 
 func (s *nodeTestsSuite) TestAddCoresToExclusivePool() {
@@ -178,18 +182,23 @@ func (s *nodeTestsSuite) TestAddCoresToExclusivePool() {
 	for i := range cores {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
-		core.On("updateFreqValues", "", 0, 0).Return(nil)
+		core.On("updateFreqValues", "", "", 0, 0).Return(nil)
 		core.On("getReserved").Return(false)
 		core.On("setPool", mock.Anything).Return()
+		core.On("setReserved", false).Return(nil)
+		core.On("exclusiveCStates").Return(false)
+		core.On("applyCStates", mock.Anything).Return(nil)
+		core.On("exclusiveCStates").Return(true)
 		cores[i] = core
 	}
 	node := &nodeImpl{
 		Name: "",
 		ExclusivePools: []Pool{
 			&poolImpl{
-				Name:         "test",
-				Cores:        make([]Core, 0),
-				PowerProfile: &profileImpl{},
+				Name:           "test",
+				Cores:          make([]Core, 0),
+				PowerProfile:   &profileImpl{},
+				CStatesProfile: CStates{"C1": true},
 			},
 		},
 		SharedPool: &poolImpl{
@@ -207,35 +216,24 @@ func (s *nodeTestsSuite) TestAddCoresToExclusivePool() {
 	s.ElementsMatch(node.SharedPool.(*poolImpl).Cores, cores[2:])
 	s.Len(node.ExclusivePools[0].(*poolImpl).Cores, 2)
 	for _, core := range node.ExclusivePools[0].(*poolImpl).Cores {
-		core.(*coreMock).AssertCalled(s.T(), "updateFreqValues", "", 0, 0)
+		core.(*coreMock).AssertCalled(s.T(), "updateFreqValues", "", "", 0, 0)
 	}
+
 }
 
 func (s *nodeTestsSuite) TestUpdateProfile() {
-	cores := make([]Core, 4)
-	for i := range cores {
-		core := new(coreMock)
-		core.On("getReserved").Return(false)
-		core.On("GetID").Return(i)
-		core.On("updateFreqValues", "", 1*1000, 100*1000).Return(nil)
-		cores[i] = core
-	}
+	pool := new(mockPool)
+	profile := &profileImpl{Name: "powah"}
+	pool.On("GetPowerProfile").Return(profile)
+	pool.On("SetPowerProfile", mock.Anything).Return(nil)
 	node := nodeImpl{
-		ExclusivePools: []Pool{
-			&poolImpl{
-				Cores:        cores,
-				PowerProfile: &profileImpl{Name: "powah"},
-			},
-		},
-		SharedPool: &poolImpl{},
+		ExclusivePools: []Pool{pool},
+		SharedPool:     new(mockPool),
 	}
 
-	s.Nil(node.UpdateProfile("powah", 1, 100, ""))
-	for _, core := range node.ExclusivePools[0].(*poolImpl).Cores {
-		core.(*coreMock).AssertCalled(s.T(), "updateFreqValues", "", 1*1000, 100*1000)
-	}
-	s.Equal("powah", node.ExclusivePools[0].(*poolImpl).PowerProfile.(*profileImpl).Name)
+	s.Nil(node.UpdateProfile("powah", 1, 100, cpuPolicyPowersave, ""))
 
+	s.Equal("powah", pool.Calls[len(pool.Calls)-1].Arguments[0].(*profileImpl).Name)
 }
 
 func (s *nodeTestsSuite) TestRemoveSharedPool() {
@@ -298,7 +296,7 @@ func (s *nodeTestsSuite) TestAddProfile() {
 			Cores: []Core{core},
 		},
 	}
-	profile, err := node.AddProfile("poolname", 0, 100, "epp")
+	profile, err := node.AddProfile("poolname", 0, 100, "powersave", "")
 	s.Nil(err)
 
 	s.Equal(profile, node.ExclusivePools[0].(*poolImpl).PowerProfile)
@@ -363,11 +361,12 @@ func (s *nodeTestsSuite) TestDeleteProfile() {
 	for i := 0; i < 4; i++ {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
-		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		core.On("getReserved").Return(false)
 		core.On("setReserved", true).Return()
 		core.On("restoreFrequencies").Return(nil)
 		core.On("setPool", mock.Anything).Return()
+		core.On("exclusiveCStates").Return(true)
 		sharedCores = append(sharedCores, core)
 	}
 	sharedCoresCopy := make([]Core, len(sharedCores))
@@ -377,11 +376,12 @@ func (s *nodeTestsSuite) TestDeleteProfile() {
 	for i := 4; i < 8; i++ {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
-		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		core.On("getReserved").Return(false)
 		core.On("setReserved", true).Return()
 		core.On("restoreFrequencies").Return(nil)
 		core.On("setPool", mock.Anything).Return()
+		core.On("exclusiveCStates").Return(true)
 		p1cores = append(p1cores, core)
 	}
 	p1copy := make([]Core, len(p1cores))
@@ -391,9 +391,10 @@ func (s *nodeTestsSuite) TestDeleteProfile() {
 	for i := 8; i < 12; i++ {
 		core := new(coreMock)
 		core.On("GetID").Return(i)
-		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		core.On("updateFreqValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		core.On("getReserved").Return(false)
 		core.On("setPool", mock.Anything).Return()
+		core.On("exclusiveCStates").Return(true)
 		p2cores = append(p2cores, core)
 	}
 	p2copy := make([]Core, len(p2cores))
@@ -445,24 +446,29 @@ func (s *nodeTestsSuite) TestAvailableCStates() {
 	s.ElementsMatch(ret, []string{"C1", "C2"})
 	s.NoError(err)
 
-	supportedFeatureErrors[CStatesFeature] = errors.New("err")
+	e := errors.New("err")
+	supportedFeatureErrors[CStatesFeature] = &e
 
 	ret, err = node.AvailableCStates()
 
 	s.Nil(ret)
-	s.ErrorIs(err, supportedFeatureErrors[CStatesFeature])
+	s.ErrorIs(err, *supportedFeatureErrors[CStatesFeature])
 
 	cStatesNamesMap = map[string]int{}
 }
 
 func (s nodeTestsSuite) TestApplyCStatesToCore() {
 	mockedCore := new(coreMock)
+<<<<<<< HEAD
 	mockedCore.On("applyCStates", mock.Anything).Return(nil)
 	mockedCore.On("setReserved", true)
+=======
+	mockedCore.On("ApplyExclusiveCStates", CStates{}).Return(nil)
+>>>>>>> internal/main
 	node := &nodeImpl{
 		allCores: []Core{mockedCore},
 	}
-	s.Nil(node.ApplyCStatesToCore(0, map[string]bool{}))
+	s.Nil(node.ApplyCStatesToCore(0, CStates{}))
 
 	mockedCore.AssertExpectations(s.T())
 }
@@ -481,4 +487,115 @@ func (s *nodeTestsSuite) TestIsCStateValid() {
 	s.False(node.IsCStateValid("C1", "C3"))
 
 	cStatesNamesMap = map[string]int{}
+}
+
+type NodeMock struct {
+	mock.Mock
+}
+
+func (m *NodeMock) AvailableCStates() ([]string, error) {
+	args := m.Called()
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *NodeMock) ApplyCStatesToSharedPool(cStates CStates) error {
+	return m.Called(cStates).Error(0)
+}
+
+func (m *NodeMock) ApplyCStateToPool(poolName string, cStates CStates) error {
+	return m.Called(poolName, cStates).Error(0)
+}
+
+func (m *NodeMock) ApplyCStatesToCore(coreID int, cStates CStates) error {
+	args := m.Called(coreID, cStates)
+	return args.Error(0)
+}
+
+func (m *NodeMock) IsCStateValid(cStates ...string) bool {
+	args := m.Called(cStates)
+	return args.Bool(0)
+}
+
+func (m *NodeMock) SetNodeName(name string) {
+	m.Called(name)
+	return
+}
+
+func (m *NodeMock) GetName() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *NodeMock) GetReservedCoreIds() []int {
+	args := m.Called()
+	return args.Get(0).([]int)
+}
+
+func (m *NodeMock) AddProfile(name string, minFreq int, maxFreq int, epp string) (Profile, error) {
+	args := m.Called(name, minFreq, maxFreq, epp)
+	return args.Get(0).(Profile), args.Error(1)
+}
+
+func (m *NodeMock) UpdateProfile(name string, minFreq int, maxFreq int, epp string) error {
+	args := m.Called(name, minFreq, maxFreq, epp)
+	return args.Error(0)
+}
+
+func (m *NodeMock) DeleteProfile(name string) error {
+	args := m.Called(name)
+	return args.Error(0)
+}
+
+func (m *NodeMock) AddCoresToExclusivePool(name string, cores []int) error {
+	args := m.Called(name, cores)
+	return args.Error(0)
+}
+
+func (m *NodeMock) AddExclusivePool(name string, profile Profile) (Pool, error) {
+	args := m.Called(name, profile)
+	return args.Get(0).(Pool), args.Error(1)
+}
+
+func (m *NodeMock) RemoveExclusivePool(name string) error {
+	args := m.Called(name)
+	return args.Error(0)
+}
+
+func (m *NodeMock) AddSharedPool(coreIds []int, profile Profile) error {
+	args := m.Called(coreIds, profile)
+	return args.Error(0)
+}
+
+func (m *NodeMock) RemoveCoresFromExclusivePool(poolName string, cores []int) error {
+	args := m.Called(poolName, cores)
+	return args.Error(0)
+}
+
+func (m *NodeMock) RemoveSharedPool() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func (m *NodeMock) GetProfile(name string) Profile {
+	args := m.Called(name)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(Profile)
+}
+
+func (m *NodeMock) GetExclusivePool(name string) Pool {
+	args := m.Called(name)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(Pool)
+}
+
+func (m *NodeMock) GetSharedPool() Pool {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(Pool)
 }

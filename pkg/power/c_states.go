@@ -17,6 +17,8 @@ const (
 	cStatesDrvPath       = "cpuidle/current_driver"
 )
 
+type CStates map[string]bool
+
 type CStatesSupportError struct {
 	msg string
 }
@@ -25,20 +27,40 @@ func (c *CStatesSupportError) Error() string {
 	return "C-States unsupported: " + c.msg
 }
 
-// map of c-state name to state number path in the sysfs
+func isSupportedCStatesDriver(driver string) bool {
+	for _, s := range []string{"intel_idle", "acpi_idle"} {
+		if driver == s {
+			return true
+		}
+	}
+	return false
+}
+
+// map of c-state Name to state number path in the sysfs
 // populated during library initialisation
 var cStatesNamesMap = map[string]int{}
 
-func preChecksCStates() error {
-	driver, err := readStringFromFile(filepath.Join(basePath, cStatesDrvPath))
-	if err != nil {
-		return &CStatesSupportError{"failed to determine driver"}
+func preChecksCStates() featureStatus {
+	feature := featureStatus{
+		Feature: CStatesFeature,
+		Name:    "C-States",
 	}
+	driver, err := readStringFromFile(filepath.Join(basePath, cStatesDrvPath))
+	driver = strings.TrimSuffix(driver, "\n")
+	feature.Driver = driver
+	if err != nil {
+		feature.Error = &CStatesSupportError{"failed to determine Driver"}
+	}
+<<<<<<< HEAD
 	driver = strings.TrimSuffix(driver, "\n")
 	if driver != "intel_idle" && driver != "acpi_idle" {
 		return &CStatesSupportError{"unsupported driver: " + driver}
+=======
+	if !isSupportedCStatesDriver(driver) {
+		feature.Error = &CStatesSupportError{"unsupported Driver"}
+>>>>>>> internal/main
 	}
-	return nil
+	return feature
 }
 
 func mapAvailableCStates() error {
@@ -60,7 +82,7 @@ func mapAvailableCStates() error {
 
 		stateName, err := readCoreStringProperty(0, fmt.Sprintf(cStateNameFileFmt, stateNumber))
 		if err != nil {
-			return errors.Wrapf(err, "could not read state%d name", stateNumber)
+			return errors.Wrapf(err, "could not read state%d Name", stateNumber)
 		}
 
 		cStatesNamesMap[stateName] = stateNumber

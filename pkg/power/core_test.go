@@ -16,8 +16,8 @@ type coreMock struct {
 	mock.Mock
 }
 
-func (m *coreMock) updateFreqValues(epp string, maxFreq int, minFreq int) error {
-	args := m.Called(epp, maxFreq, minFreq)
+func (m *coreMock) updateFreqValues(governor string, epp string, maxFreq int, minFreq int) error {
+	args := m.Called(governor, epp, maxFreq, minFreq)
 	return args.Error(0)
 }
 
@@ -46,13 +46,13 @@ func (m *coreMock) setPool(pool Pool) {
 	m.Called(pool)
 }
 
-func (m *coreMock) applyCStates(states map[string]bool) error {
+func (m *coreMock) applyCStates(states CStates) error {
 	return m.Called(states).Error(0)
 }
 func (m *coreMock) exclusiveCStates() bool {
 	return m.Called().Bool(0)
 }
-func (m *coreMock) ApplyExclusiveCStates(cStates map[string]bool) error {
+func (m *coreMock) ApplyExclusiveCStates(cStates CStates) error {
 	return m.Called(cStates).Error(0)
 }
 
@@ -67,14 +67,15 @@ func (m *coreMock) restoreDefaultCStates() error {
 func setupCoreTests(cpufiles map[string]map[string]string) func() {
 	origBasePath := basePath
 	basePath = "testing/cores"
-	supportedFeatureErrors[SSTBFFeature] = nil
+	var nilError error
+	supportedFeatureErrors[PStatesFeature] = &nilError
 
 	origGetNumOfCpusFunc := getNumberOfCpus
 	getNumberOfCpus = func() int { return len(cpufiles) }
 
 	for cpuName, cpuDetails := range cpufiles {
 		cpudir := filepath.Join(basePath, cpuName)
-		os.MkdirAll(filepath.Join(cpudir, "cpufreq"), 0644)
+		os.MkdirAll(filepath.Join(cpudir, "cpufreq"), os.ModePerm)
 		os.WriteFile(filepath.Join(cpudir, scalingDrvFile), []byte("intel_pstate\n"), 0664)
 		for prop, value := range cpuDetails {
 			switch prop {
@@ -86,6 +87,8 @@ func setupCoreTests(cpufiles map[string]map[string]string) func() {
 				os.WriteFile(filepath.Join(cpudir, cpuMinFreqFile), []byte(value+"\n"), 0644)
 			case "epp":
 				os.WriteFile(filepath.Join(cpudir, eppFile), []byte(value+"\n"), 0644)
+			case "governor":
+				os.WriteFile(filepath.Join(cpudir, scalingGovFile), []byte(value+"\n"), 0644)
 			}
 		}
 	}
@@ -93,7 +96,7 @@ func setupCoreTests(cpufiles map[string]map[string]string) func() {
 		os.RemoveAll(strings.Split(basePath, "/")[0])
 		basePath = origBasePath
 		getNumberOfCpus = origGetNumOfCpusFunc
-		supportedFeatureErrors[SSTBFFeature] = uninitialisedErr
+		supportedFeatureErrors[PStatesFeature] = &uninitialisedErr
 	}
 }
 
@@ -118,11 +121,12 @@ func TestNewCore(t *testing.T) {
 		IsReservedSystemCPU: true,
 	}, core)
 
-	supportedFeatureErrors[SSTBFFeature] = errors.New("sstbf not workin")
+	uninit := errors.New("sstbf not workin")
+	supportedFeatureErrors[PStatesFeature] = &uninit
 	core, err = newCore(1)
 
 	assert.Equal(t, core, &coreImpl{ID: 1, IsReservedSystemCPU: true})
-	assert.ErrorIs(t, err, supportedFeatureErrors[SSTBFFeature])
+	assert.ErrorIs(t, err, *supportedFeatureErrors[PStatesFeature])
 }
 
 func TestCoreImpl_setGet(t *testing.T) {
@@ -148,11 +152,12 @@ func TestCoreImpl_updateValues(t *testing.T) {
 	})
 	defer teardown()
 	const (
-		minFreqInit  = 999
-		maxFreqInit  = 9999
-		maxFreqToSet = 8888
-		minFreqToSet = 1111
-		eppToSet     = "testEpp"
+		minFreqInit   = 999
+		maxFreqInit   = 9999
+		maxFreqToSet  = 8888
+		minFreqToSet  = 1111
+		governorToSet = "powersave"
+		eppToSet      = "testEpp"
 	)
 
 	core := &coreImpl{
@@ -161,7 +166,7 @@ func TestCoreImpl_updateValues(t *testing.T) {
 		MaximumFreq:         maxFreqInit,
 		IsReservedSystemCPU: false,
 	}
-	assert.Nil(t, core.updateFreqValues(eppToSet, minFreqToSet, maxFreqToSet))
+	assert.Nil(t, core.updateFreqValues(governorToSet, eppToSet, minFreqToSet, maxFreqToSet))
 
 	eppFileContent, _ := os.ReadFile(filepath.Join(basePath, "cpu0", eppFile))
 	assert.Equal(t, eppToSet, string(eppFileContent))
@@ -170,12 +175,13 @@ func TestCoreImpl_updateValues(t *testing.T) {
 	maxFreqInt, _ := strconv.Atoi(string(maxFreqContent))
 	assert.Equal(t, maxFreqToSet, maxFreqInt)
 
-	core.updateFreqValues("", minFreqToSet, maxFreqToSet)
+	core.updateFreqValues(governorToSet, "", minFreqToSet, maxFreqToSet)
 	eppFileContent, _ = os.ReadFile(filepath.Join(basePath, "cpu0", eppFile))
 	assert.Equal(t, eppToSet, string(eppFileContent))
 
-	supportedFeatureErrors[SSTBFFeature] = errors.New("not supported")
-	assert.ErrorIs(t, core.updateFreqValues("", 0, 0), supportedFeatureErrors[SSTBFFeature])
+	unsupp := errors.New("not supported")
+	supportedFeatureErrors[PStatesFeature] = &unsupp
+	assert.ErrorIs(t, core.updateFreqValues(governorToSet, "", 0, 0), *supportedFeatureErrors[PStatesFeature])
 }
 
 func TestCoreImpl_restoreValues(t *testing.T) {
@@ -228,7 +234,8 @@ func TestCoreImpl_getAllCores(t *testing.T) {
 		IsReservedSystemCPU: true,
 	})
 
-	supportedFeatureErrors[SSTBFFeature] = errors.New("")
+	error := errors.New("")
+	supportedFeatureErrors[PStatesFeature] = &error
 	cores, err = getAllCores()
 	assert.NoError(t, err)
 
@@ -252,7 +259,7 @@ func TestCoreImpl_applyCStates(t *testing.T) {
 	}
 	defer setupCoreCStatesTests(cpufiles)()
 	mapAvailableCStates()
-	err := (&coreImpl{ID: 0}).applyCStates(map[string]bool{
+	err := (&coreImpl{ID: 0}).applyCStates(CStates{
 		"C0": false,
 		"C2": true})
 
@@ -294,7 +301,7 @@ func TestCoreImpl_ApplyExclusiveCStates(t *testing.T) {
 
 	// setting core specific c states
 	core := &coreImpl{ID: 0}
-	err := core.ApplyExclusiveCStates(map[string]bool{
+	err := core.ApplyExclusiveCStates(CStates{
 		"C2": false})
 
 	assert.NoError(t, err)
@@ -317,7 +324,7 @@ func TestCoreImpl_ApplyExclusiveCStates(t *testing.T) {
 
 	// unset core states with existing states in the pool
 	// should set pool values
-	core.pool.(*poolImpl).CStatesProfile = map[string]bool{"C2": false}
+	core.pool.(*poolImpl).CStatesProfile = CStates{"C2": false}
 	err = core.ApplyExclusiveCStates(nil)
 
 	assert.NoError(t, err)

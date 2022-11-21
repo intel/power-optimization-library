@@ -9,7 +9,7 @@ type poolImpl struct {
 	Name           string
 	Cores          []Core
 	PowerProfile   Profile
-	CStatesProfile map[string]bool
+	CStatesProfile CStates
 }
 
 type Pool interface {
@@ -21,8 +21,8 @@ type Pool interface {
 	GetPowerProfile() Profile
 	GetCores() []Core
 	GetCoreIds() []int
-	SetCStates(states map[string]bool) error
-	getCStates() map[string]bool
+	SetCStates(states CStates) error
+	getCStates() CStates
 }
 
 func (pool *poolImpl) GetName() string {
@@ -33,7 +33,7 @@ func (pool *poolImpl) GetPowerProfile() Profile {
 	return pool.PowerProfile
 }
 
-func (pool *poolImpl) getCStates() map[string]bool {
+func (pool *poolImpl) getCStates() CStates {
 	return pool.CStatesProfile
 }
 
@@ -43,9 +43,10 @@ func (pool *poolImpl) addCore(core Core) error {
 			return errors.Errorf("core %d already in the pool", core.GetID())
 		}
 	}
-	if IsFeatureSupported(SSTBFFeature) {
+	if IsFeatureSupported(PStatesFeature) {
 		if pool.PowerProfile != nil {
 			err := core.updateFreqValues(
+				pool.PowerProfile.GetGovernor(),
 				pool.PowerProfile.GetEpp(),
 				pool.PowerProfile.GetMinFreq(),
 				pool.PowerProfile.GetMaxFreq(),
@@ -59,8 +60,15 @@ func (pool *poolImpl) addCore(core Core) error {
 				return errors.Wrap(err, "SetPowerProfile")
 			}
 		}
-		core.setPool(pool)
 	}
+	if IsFeatureSupported(CStatesFeature) {
+		if !core.exclusiveCStates() {
+			if err := core.applyCStates(pool.getCStates()); err != nil {
+				return err
+			}
+		}
+	}
+	core.setPool(pool)
 	pool.Cores = append(pool.Cores, core)
 	return nil
 }
@@ -110,8 +118,8 @@ func (pool *poolImpl) GetCores() []Core {
 // SetPowerProfile will set new power profile for the pool configuration of all cores in the pool will be updated
 // nil will reset cores to their default values
 func (pool *poolImpl) SetPowerProfile(profile Profile) error {
-	if !IsFeatureSupported(SSTBFFeature) {
-		return supportedFeatureErrors[SSTBFFeature]
+	if !IsFeatureSupported(PStatesFeature) {
+		return *supportedFeatureErrors[PStatesFeature]
 	}
 	pool.PowerProfile = profile
 	if profile != nil {
@@ -120,6 +128,7 @@ func (pool *poolImpl) SetPowerProfile(profile Profile) error {
 				continue
 			}
 			err := core.updateFreqValues(
+				profile.GetGovernor(),
 				profile.GetEpp(),
 				profile.GetMinFreq(),
 				profile.GetMaxFreq(),
@@ -147,9 +156,9 @@ func (pool *poolImpl) doRemoveCore(index int) error {
 	return nil
 }
 
-func (pool *poolImpl) SetCStates(states map[string]bool) error {
+func (pool *poolImpl) SetCStates(states CStates) error {
 	if !IsFeatureSupported(CStatesFeature) {
-		return supportedFeatureErrors[CStatesFeature]
+		return *supportedFeatureErrors[CStatesFeature]
 	}
 	// check if requested states are on the system
 	for name := range states {
