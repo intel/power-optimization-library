@@ -1,65 +1,74 @@
 package power
 
-import "github.com/pkg/errors"
+import (
+	"fmt"
+)
 
 type profileImpl struct {
-	Name     string
-	Max      int
-	Min      int
-	Epp      string
-	Governor string
+	name     string
+	max      int
+	min      int
+	epp      string
+	governor string
+	// todo classification
 }
 
+// Profile is a P-states power profile
+// requires P-states feature
 type Profile interface {
-	GetName() string
-	GetEpp() string
-	GetMaxFreq() int
-	GetMinFreq() int
-	GetGovernor() string
+	Name() string
+	Epp() string
+	MaxFreq() int
+	MinFreq() int
+	Governor() string
 }
 
-func NewProfile(name string, minFreq int, maxFreq int, governor string, epp string) (Profile, error) {
+// todo add simple constructor that determines frequencies automagically?
+
+// NewPowerProfile creates a power P-States power profile,
+func NewPowerProfile(name string, minFreq int, maxFreq int, governor string, epp string) (Profile, error) {
+	if !featureList.isFeatureIdSupported(PStatesFeature) {
+		return nil, featureList.getFeatureIdError(PStatesFeature)
+	}
+
 	if minFreq > maxFreq {
-		return nil, errors.New("Max Freq can't be lower than Min")
+		return nil, fmt.Errorf("max Freq can't be lower than min")
 	}
 
 	if governor != cpuPolicyPerformance && governor != cpuPolicyPowersave { //todo determine by reading available governors, its different for acpi Driver
-		return nil, errors.Errorf("Governor can only be set to '%s' or '%s'", cpuPolicyPerformance, cpuPolicyPowersave)
-	}
-	// todo check if this is p-state specific
-	if governor == cpuPolicyPerformance && epp != cpuPolicyPerformance {
-		return nil, errors.Errorf("Only '%s' epp can be used with '%s' governor", cpuPolicyPerformance, cpuPolicyPerformance)
+		return nil, fmt.Errorf("governor can only be set to '%s' or '%s'", cpuPolicyPerformance, cpuPolicyPowersave)
 	}
 
+	if governor == cpuPolicyPerformance && epp != cpuPolicyPerformance {
+		return nil, fmt.Errorf("only '%s' epp can be used with '%s' governor", cpuPolicyPerformance, cpuPolicyPerformance)
+	}
+
+	log.Info("creating powerProfile object", "name", name)
 	return &profileImpl{
-		Name:     name,
-		Max:      maxFreq * 1000,
-		Min:      minFreq * 1000,
-		Epp:      epp,
-		Governor: governor,
+		name:     name,
+		max:      maxFreq * 1000,
+		min:      minFreq * 1000,
+		epp:      epp,
+		governor: governor,
 	}, nil
 }
 
-func (p *profileImpl) GetEpp() string {
-	return p.Epp
+func (p *profileImpl) Epp() string {
+	return p.epp
 }
 
-func (p *profileImpl) GetMaxFreq() int {
-	return p.Max
+func (p *profileImpl) MaxFreq() int {
+	return p.max
 }
 
-func (p *profileImpl) GetMinFreq() int {
-	return p.Min
+func (p *profileImpl) MinFreq() int {
+	return p.min
 }
 
-func (p *profileImpl) SetProfileName(name string) {
-	p.Name = name
+func (p *profileImpl) Name() string {
+	return p.name
 }
 
-func (p *profileImpl) GetName() string {
-	return p.Name
-}
-
-func (p *profileImpl) GetGovernor() string {
-	return p.Governor
+func (p *profileImpl) Governor() string {
+	return p.governor
 }

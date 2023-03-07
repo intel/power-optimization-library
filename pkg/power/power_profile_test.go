@@ -1,46 +1,39 @@
 package power
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-func TestProfileImpl_Profile(t *testing.T) {
-	assert := assert.New(t)
-	profileNameInit := "pool Name"
-	profileNameNew := "unit tests :("
-
-	profile := &profileImpl{Name: profileNameInit}
-	assert.Equal(profileNameInit, profile.GetName())
-
-	profile.SetProfileName(profileNameNew)
-	assert.Equal(profileNameNew, profile.Name)
-}
-
 func TestNewProfile(t *testing.T) {
-	profile, err := NewProfile("Name", 0, 100, cpuPolicyPowersave, "epp")
+	profile, err := NewPowerProfile("name", 0, 100, cpuPolicyPowersave, "epp")
 
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, uninitialisedErr)
 
-	assert.Equal(t, "Name", profile.(*profileImpl).Name)
-	assert.Equal(t, 0, profile.(*profileImpl).Min)
-	assert.Equal(t, 100*1000, profile.(*profileImpl).Max)
-	assert.Equal(t, "powersave", profile.(*profileImpl).Governor)
-	assert.Equal(t, "epp", profile.(*profileImpl).Epp)
+	featureList[PStatesFeature].err = nil
+	defer func() { featureList[PStatesFeature].err = uninitialisedErr }()
 
-	profile, err = NewProfile("Name", 0, 10, cpuPolicyPerformance, cpuPolicyPerformance)
+	profile, err = NewPowerProfile("name", 0, 100, cpuPolicyPowersave, "epp")
+	assert.Equal(t, "name", profile.(*profileImpl).name)
+	assert.Equal(t, 0, profile.(*profileImpl).min)
+	assert.Equal(t, 100*1000, profile.(*profileImpl).max)
+	assert.Equal(t, "powersave", profile.(*profileImpl).governor)
+	assert.Equal(t, "epp", profile.(*profileImpl).epp)
+
+	profile, err = NewPowerProfile("name", 0, 10, cpuPolicyPerformance, cpuPolicyPerformance)
 	assert.NoError(t, err)
 	assert.NotNil(t, profile)
 
-	profile, err = NewProfile("Name", 0, 100, cpuPolicyPerformance, "epp")
-	assert.Error(t, err)
+	profile, err = NewPowerProfile("name", 0, 100, cpuPolicyPerformance, "epp")
+	assert.ErrorContains(t, err, fmt.Sprintf("'%s' epp can be used with '%s' governor", cpuPolicyPerformance, cpuPolicyPerformance))
 	assert.Nil(t, profile)
 
-	profile, err = NewProfile("Name", 100, 0, cpuPolicyPowersave, "epp")
-	assert.Error(t, err)
+	profile, err = NewPowerProfile("name", 100, 0, cpuPolicyPowersave, "epp")
+	assert.ErrorContains(t, err, "max Freq can't be lower than min")
 	assert.Nil(t, profile)
 
-	profile, err = NewProfile("Name", 0, 100, "something random", "epp")
-	assert.Error(t, err)
+	profile, err = NewPowerProfile("name", 0, 100, "something random", "epp")
+	assert.ErrorContains(t, err, fmt.Sprintf("governor can only be set to '%s' or '%s'", cpuPolicyPerformance, cpuPolicyPowersave))
 	assert.Nil(t, profile)
 }

@@ -2,258 +2,237 @@ package power
 
 import (
 	"fmt"
-	"github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
-	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
-type coreImpl struct {
-	ID                  int
-	MinimumFreq         int
-	MaximumFreq         int
-	IsReservedSystemCPU bool
-	pool                Pool
-	hasExclusiveCStates bool
-}
+// todo package (socket) awareness
 
 type Core interface {
-	updateFreqValues(governor string, epp string, minFreq int, maxFreq int) error
-	GetID() int
-	setReserved(reserved bool)
-	getReserved() bool
-	restoreFrequencies() error
-	applyCStates(desiredCStates CStates) error
-	setPool(pool Pool)
+	GetID() uint
+	SetPool(pool Pool) error
+
 	getPool() Pool
-	exclusiveCStates() bool
-	ApplyExclusiveCStates(cStates CStates) error
-	restoreDefaultCStates() error
+	doSetPool(pool Pool) error
+	consolidate() error
+
+	// C-States stuff
+	SetCStates(cStates CStates) error
+
+	// used only to set initial pool when creating core instance
+	_setPoolProperty(pool Pool)
 }
 
-func newCore(coreID int) (Core, error) {
-	core := &coreImpl{ID: coreID, IsReservedSystemCPU: true}
+type coreImpl struct {
+	id    uint
+	mutex *sync.Mutex
+	pool  Pool
+	// C-States properties
+	cStates *CStates
+}
 
-	if IsFeatureSupported(PStatesFeature) {
-		// read sst-bf properties only if sst-bf is supported
-		minFreq, err := readCoreIntProperty(coreID, cpuMinFreqFile)
-		if err != nil {
-			return nil, errors.Wrapf(err, "newCore id: %d", coreID)
-		}
-		core.MinimumFreq = minFreq
-
-		maxFreq, err := readCoreIntProperty(coreID, cpuMaxFreqFile)
-		if err != nil {
-			return nil, errors.Wrapf(err, "newCore id: %d", coreID)
-		}
-		core.MaximumFreq = maxFreq
+func newCore(coreID uint) (Core, error) {
+	core := &coreImpl{
+		id:    coreID,
+		mutex: &sync.Mutex{},
 	}
 
-	return core, *supportedFeatureErrors[PStatesFeature]
+	return core, nil
 }
-func (core *coreImpl) setReserved(reserved bool) {
-	core.IsReservedSystemCPU = reserved
+
+func (core *coreImpl) consolidate() error {
+	if err := core.updateFrequencies(); err != nil {
+		return err
+	}
+	if err := core.updateCStates(); err != nil {
+		return err
+	}
+	return nil
 }
-func (core *coreImpl) getReserved() bool {
-	return core.IsReservedSystemCPU
+
+// SetPool moves current core to a specified target pool
+// allowed movements are reservedPoolType <-> sharedPoolType and sharedPoolType <-> any exclusive pool
+func (core *coreImpl) SetPool(targetPool Pool) error {
+	/*
+		case 0: current and target pool are the same -> do nothing
+
+		case 1: target = reserved, current = reserved  -> case 0
+		case 2: target = reserved, current = shared -> do it
+		case 3: target = reserved, current = exclusive -> error
+
+		case 4: target = shared, current = exclusive -> do it
+		case 5: target = shared, current = shared -> case 0
+		case 6: target = shared, current = reserved -> do it
+
+		case 7: target = exclusive, current = other exclusive -> error
+		case 8: target = exclusive, current = shared -> do it
+		case 9: target = exclusive, current = reserved -> error
+
+	*/
+	if targetPool == nil {
+		return fmt.Errorf("target pool cannot be nil")
+	}
+
+	log.Info("Set pool", "core", core.id, "source pool", core.pool.Name(), "target pool", targetPool.Name())
+	if core.pool == targetPool { // case 0,1,5
+		return nil
+	}
+	reservedPool := core.pool.getHost().GetReservedPool()
+	sharedPool := core.pool.getHost().GetSharedPool()
+	if core.pool == reservedPool && targetPool.isExclusive() { // case 3
+		return fmt.Errorf("cannot move from reserved to exclusive pool")
+	}
+
+	if core.pool.isExclusive() && targetPool.isExclusive() { // case 7
+		return fmt.Errorf("cannot move exclusive to different exclusive pool")
+	}
+
+	if core.pool.isExclusive() && targetPool == reservedPool { // case 9
+		return fmt.Errorf("cannot move from exclusive to reserved")
+	}
+
+	// cases 2,4,5,6,8
+	if targetPool == sharedPool || core.pool == sharedPool {
+		return core.doSetPool(targetPool)
+	}
+	panic("we should never get here")
 }
-func (core *coreImpl) setPool(pool Pool) {
+
+func (core *coreImpl) doSetPool(pool Pool) error {
+	log.V(4).Info("mutex locking core", "coreID", core.id)
+	core.mutex.Lock()
+
+	defer func() {
+		log.V(4).Info("mutex unlocking core", "coreID", core.id)
+		core.mutex.Unlock()
+	}()
+
+	origPool := core.pool
 	core.pool = pool
+
+	origPoolCores := origPool.Cores()
+	log.V(4).Info("removing core from pool", "pool", origPool.Name(), "coreID", core.id)
+	if err := origPoolCores.remove(core); err != nil {
+		core.pool = origPool
+		return err
+	}
+
+	log.V(4).Info("starting consolidation of core", "coreID", core.id)
+	if err := core.consolidate(); err != nil {
+		core.pool = origPool
+		origPoolCores.add(core)
+		return err
+	}
+
+	newPoolCores := core.pool.Cores()
+	newPoolCores.add(core)
+	return nil
 }
+
 func (core *coreImpl) getPool() Pool {
 	return core.pool
 }
 
-func (core *coreImpl) GetID() int {
-	return core.ID
+func (core *coreImpl) GetID() uint {
+	return core.id
 }
 
-func (core *coreImpl) exclusiveCStates() bool {
-	return core.hasExclusiveCStates
+func (core *coreImpl) _setPoolProperty(pool Pool) {
+	core.pool = pool
 }
 
-func (core *coreImpl) restoreDefaultCStates() error {
-	defaultCStates := CStates{}
-	// enable all the c
-	for stateName := range cStatesNamesMap {
-		defaultCStates[stateName] = true
-	}
-	return core.applyCStates(defaultCStates)
-}
-func (core *coreImpl) updateFreqValues(governor string, epp string, minFreq int, maxFreq int) error {
-	if !IsFeatureSupported(PStatesFeature) {
-		return *supportedFeatureErrors[PStatesFeature]
-	}
-	var err error
-	if minFreq > maxFreq {
-		return errors.New("minFreq cant be higher than maxFreq")
-	}
-	if core.IsReservedSystemCPU {
-		return nil
-	}
-	err = core.writeGovernorValue(governor)
-	if err != nil {
-		return err
-	}
-	if epp != "" {
-		err = core.writeEppValue(epp)
-		if err != nil {
-			return errors.Wrapf(err, "failed to set EPP value for core %d", core.ID)
-		}
-	}
-	err = core.writeScalingMaxFreq(maxFreq)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set MaxFreq value for core %d", core.ID)
-	}
-	err = core.writeScalingMinFreq(minFreq)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set MinFreq value for core %d", core.ID)
-	}
-	return nil
-}
-
-func (core *coreImpl) writeEppValue(eppValue string) error {
-	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", core.ID), eppFile), []byte(eppValue), 0644)
-}
-
-func (core *coreImpl) writeGovernorValue(eppValue string) error {
-	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", core.ID), scalingGovFile), []byte(eppValue), 0644)
-}
-
-func (core *coreImpl) writeScalingMaxFreq(freq int) error {
-	if freq > core.MaximumFreq {
-		freq = core.MaximumFreq
-	}
-	scalingFile := filepath.Join(basePath, fmt.Sprint("cpu", core.ID), scalingMaxFile)
-	f, err := os.OpenFile(
-		scalingFile,
-		os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
-		0644,
-	)
-	if err != nil {
-		return errors.Wrap(err, "writeScalingMaxFreq")
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(fmt.Sprint(freq))
-	if err != nil {
-		return errors.Wrap(err, "writeScalingMaxFreq")
-	}
-	return nil
-}
-
-func (core *coreImpl) writeScalingMinFreq(freq int) error {
-	if freq < core.MinimumFreq {
-		freq = core.MinimumFreq
-	}
-	scalingFile := filepath.Join(basePath, fmt.Sprint("cpu", core.ID), scalingMinFile)
-	f, err := os.OpenFile(
-		scalingFile,
-		os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
-		0644,
-	)
-	if err != nil {
-		return errors.Wrap(err, "writeScalingMinFreq")
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(fmt.Sprint(freq))
-	if err != nil {
-		return errors.Wrap(err, "writeScalingMinFreq")
-	}
-	return nil
-}
-
-func (core *coreImpl) restoreFrequencies() error {
-	return errors.Wrap(core.updateFreqValues(defaultGovernor, defaultEpp, core.MinimumFreq, core.MaximumFreq), "restoreFrequencies")
-}
-
-func (core *coreImpl) applyCStates(desiredCStates CStates) error {
-	if desiredCStates == nil {
-		return core.restoreDefaultCStates()
-	}
-	var applyingErrors *multierror.Error
-	for state, enabled := range desiredCStates {
-		stateFilePath := filepath.Join(
-			basePath,
-			fmt.Sprint("cpu", core.ID),
-			fmt.Sprintf(cStateDisableFileFmt, cStatesNamesMap[state]),
-		)
-		content := make([]byte, 1)
-		if enabled {
-			content[0] = '0' // write '0' to enable the c state
-		} else {
-			content[0] = '1' // write '1' to disable the c state
-		}
-		applyingErrors = multierror.Append(applyingErrors,
-			errors.Wrapf(os.WriteFile(stateFilePath, content, 0644), "CState %s, core %d", state, core.ID))
-	}
-	return applyingErrors.ErrorOrNil()
-}
-
-func (core *coreImpl) ApplyExclusiveCStates(cStates CStates) error {
-	// wipe core specific configuration and apply pool one or default one
-	if cStates == nil {
-		if err := core.applyCStates(core.pool.getCStates()); err != nil {
-			return err
-		}
-		core.hasExclusiveCStates = false
-	} else {
-		if err := core.applyCStates(cStates); err != nil {
-			return err
-		}
-		core.hasExclusiveCStates = true
-	}
-	return nil
-}
-
-// Get the CPU max frequency from sysfs
-func readCoreIntProperty(coreID int, file string) (int, error) {
+// read property of specific CPU as an int, takes CPUid and path to specific file within cpu subdirectory in sysfs
+func readCoreIntProperty(coreID uint, file string) (int, error) {
 	path := filepath.Join(basePath, fmt.Sprint("cpu", coreID), file)
 	return readIntFromFile(path)
 }
 
 // reads content of a file and returns it as a string
-func readCoreStringProperty(coreID int, file string) (string, error) {
+func readCoreStringProperty(coreID uint, file string) (string, error) {
 	path := filepath.Join(basePath, fmt.Sprint("cpu", coreID), file)
 	value, err := readStringFromFile(path)
 	if err != nil {
-		//log
-		return "", err
+		return "", fmt.Errorf("failed to read core %d string property: %w", coreID, err)
 	}
 	value = strings.TrimSuffix(value, "\n")
 	return value, nil
 }
 
-func getAllCores() ([]Core, error) {
-	num := getNumberOfCpus()
-	cores := make([]Core, num)
-	for i := 0; i < num; i++ {
+type CoreList []Core
+
+func (cores *CoreList) IndexOf(core Core) int {
+	for i, c := range *cores {
+		if c == core {
+			return i
+		}
+	}
+	return -1
+}
+
+func (cores *CoreList) Contains(core Core) bool {
+	if cores.IndexOf(core) < 0 {
+		return false
+	} else {
+		return true
+	}
+}
+func (cores *CoreList) add(core Core) {
+	*cores = append(*cores, core)
+}
+func (cores *CoreList) remove(core Core) error {
+	index := cores.IndexOf(core)
+	if index < 0 {
+		return fmt.Errorf("core %d is not in pool", core.GetID())
+	}
+	size := len(*cores) - 1
+	(*cores)[index] = (*cores)[size]
+	*cores = (*cores)[:size]
+	return nil
+}
+func (cores *CoreList) IDs() []uint {
+	ids := make([]uint, len(*cores))
+	for i, core := range *cores {
+		ids[i] = core.GetID()
+	}
+	return ids
+}
+func (cores *CoreList) ByID(id uint) Core {
+	index := int(id)
+	// first we try index == coreId
+	if len(*cores) > index && (*cores)[index].GetID() == id {
+		return (*cores)[index]
+	}
+	// if that doesn't work we fall back to looping
+	for _, core := range *cores {
+		if core.GetID() == id {
+			return core
+		}
+	}
+	return nil
+}
+func (cores *CoreList) ManyByIDs(ids []uint) (CoreList, error) {
+	targets := make(CoreList, len(ids))
+
+	for i, id := range ids {
+		core := cores.ByID(id)
+		if core == nil {
+			return nil, fmt.Errorf("core with id %d, not in list", id)
+		}
+		targets[i] = core
+	}
+	return targets, nil
+}
+
+var getAllCores = func() (CoreList, error) {
+	numOfCores := getNumberOfCpus()
+	cores := make(CoreList, numOfCores)
+	for i := uint(0); i < numOfCores; i++ {
 		core, err := newCore(i)
-		if err != nil && !errors.Is(err, *supportedFeatureErrors[PStatesFeature]) {
-			return nil, errors.Wrap(err, "getAllCores")
+		if err != nil {
+			return nil, err
 		}
 		cores[i] = core
 	}
 	return cores, nil
-}
-
-// TODO this probably badly needs optimizing
-// returns a list of cores that are in the first list but are not present in the excluded list
-func diffCoreList(all []Core, excluded []Core) []Core {
-	var diffCores = make([]Core, 0)
-	for _, s1 := range all {
-		found := false
-		for _, s2 := range excluded {
-			if s1.GetID() == s2.GetID() {
-				found = true
-				break
-			}
-		}
-		if !found {
-			diffCores = append(diffCores, s1)
-		}
-	}
-	return diffCores
 }
