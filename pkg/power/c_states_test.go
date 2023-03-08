@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-func setupCoreCStatesTests(cpufiles map[string]map[string]map[string]string) func() {
+func setupCpuCStatesTests(cpufiles map[string]map[string]map[string]string) func() {
 	origBasePath := basePath
-	basePath = "testing/cores"
+	basePath = "testing/cpus"
 
 	origGetNumOfCpusFunc := getNumberOfCpus
 	getNumberOfCpus = func() uint {
@@ -81,7 +81,7 @@ func Test_mapAvailableCStates(t *testing.T) {
 		"cpu0": states,
 		"cpu1": states,
 	}
-	teardown := setupCoreCStatesTests(cpufiles)
+	teardown := setupCpuCStatesTests(cpufiles)
 
 	err := mapAvailableCStates()
 	assert.NoError(t, err)
@@ -96,7 +96,7 @@ func Test_mapAvailableCStates(t *testing.T) {
 	teardown()
 
 	states["state0"] = nil
-	teardown = setupCoreCStatesTests(cpufiles)
+	teardown = setupCpuCStatesTests(cpufiles)
 
 	err = mapAvailableCStates()
 
@@ -106,14 +106,14 @@ func Test_mapAvailableCStates(t *testing.T) {
 
 	states["state0"] = map[string]string{"name": "C0"}
 	delete(cpufiles, "cpu0")
-	teardown = setupCoreCStatesTests(cpufiles)
+	teardown = setupCpuCStatesTests(cpufiles)
 
 	assert.Error(t, mapAvailableCStates())
 	teardown()
 }
 
 func TestCStates_preCheckCStates(t *testing.T) {
-	teardown := setupCoreCStatesTests(map[string]map[string]map[string]string{
+	teardown := setupCpuCStatesTests(map[string]map[string]map[string]string{
 		"cpu0":   nil,
 		"Driver": {"intel_idle\n": nil},
 	})
@@ -124,7 +124,7 @@ func TestCStates_preCheckCStates(t *testing.T) {
 	assert.Nil(t, state.FeatureError())
 	teardown()
 
-	teardown = setupCoreCStatesTests(map[string]map[string]map[string]string{
+	teardown = setupCpuCStatesTests(map[string]map[string]map[string]string{
 		"Driver": {"something": nil},
 	})
 	feature := initCStates()
@@ -133,7 +133,7 @@ func TestCStates_preCheckCStates(t *testing.T) {
 	teardown()
 }
 
-func TestCoreImpl_applyCStates(t *testing.T) {
+func TestCpuImpl_applyCStates(t *testing.T) {
 	states := map[string]map[string]string{
 		"state0": {"name": "C0", "disable": "0"},
 		"state2": {"name": "C2", "disable": "0"},
@@ -141,12 +141,12 @@ func TestCoreImpl_applyCStates(t *testing.T) {
 	cpufiles := map[string]map[string]map[string]string{
 		"cpu0": states,
 	}
-	defer setupCoreCStatesTests(cpufiles)()
+	defer setupCpuCStatesTests(cpufiles)()
 	cStatesNamesMap = map[string]int{
 		"C2": 2,
 		"C0": 0,
 	}
-	err := (&coreImpl{id: 0}).applyCStates(&CStates{
+	err := (&cpuImpl{id: 0}).applyCStates(&CStates{
 		"C0": false,
 		"C2": true})
 
@@ -170,7 +170,7 @@ func TestCoreImpl_applyCStates(t *testing.T) {
 }
 
 func TestValidateCStates(t *testing.T) {
-	defer setupCoreCStatesTests(nil)()
+	defer setupCpuCStatesTests(nil)()
 
 	cStatesNamesMap = map[string]int{
 		"C0": 0,
@@ -196,24 +196,24 @@ func TestHostImpl_AvailableCStates(t *testing.T) {
 	}
 	host := &hostImpl{}
 	assert.Empty(t, host.AvailableCStates())
-	defer setupCoreCStatesTests(nil)()
+	defer setupCpuCStatesTests(nil)()
 
 	assert.ElementsMatch(t, host.AvailableCStates(), []string{"C1", "C2", "C3"})
 }
 
 func TestPoolImpl_SetCStates(t *testing.T) {
-	core1 := new(coreMock)
+	core1 := new(cpuMock)
 	core1.On("consolidate").Return(nil)
 
-	core2 := new(coreMock)
+	core2 := new(cpuMock)
 	pool := &poolImpl{
-		cores: CoreList{core1},
+		cpus: CpuList{core1},
 	}
 	// cstates not supported
 	assert.ErrorIs(t, pool.SetCStates(nil), uninitialisedErr)
 	core1.AssertNotCalled(t, "consolidate")
 	core2.AssertNotCalled(t, "consolidate")
-	defer setupCoreCStatesTests(nil)()
+	defer setupCpuCStatesTests(nil)()
 
 	// all good
 	cStatesNamesMap = map[string]int{
@@ -224,18 +224,18 @@ func TestPoolImpl_SetCStates(t *testing.T) {
 	core2.AssertNotCalled(t, "consolidate")
 
 	//consolidate failed
-	core1 = new(coreMock)
-	pool.cores = CoreList{core1}
+	core1 = new(cpuMock)
+	pool.cpus = CpuList{core1}
 	core1.On("consolidate").Return(fmt.Errorf("consolidate failed"))
 	assert.ErrorContains(t, pool.SetCStates(CStates{"C0": true}), "failed to apply c-states: consolidate failed")
 }
 
-func TestCoreImpl_updateCStates(t *testing.T) {
-	core := &coreImpl{id: 0}
+func TestCpuImpl_updateCStates(t *testing.T) {
+	core := &cpuImpl{id: 0}
 	// cstates feature not supported
 	assert.NoError(t, core.updateCStates())
 
-	defer setupCoreCStatesTests(map[string]map[string]map[string]string{
+	defer setupCpuCStatesTests(map[string]map[string]map[string]string{
 		"cpu0": {
 			"state0": {"name": "C0", "disable": "0"},
 			"state1": {"name": "C1", "disable": "0"},
@@ -278,15 +278,15 @@ func TestCoreImpl_updateCStates(t *testing.T) {
 	pool.AssertExpectations(t)
 }
 
-func TestCoreImpl_SetCStates(t *testing.T) {
+func TestCpuImpl_SetCStates(t *testing.T) {
 	pool := new(poolMock)
 	pool.On("getCStates").Return(nil)
-	core := &coreImpl{
+	core := &cpuImpl{
 		id:   0,
 		pool: pool,
 	}
 	assert.ErrorIs(t, core.SetCStates(nil), uninitialisedErr)
-	defer setupCoreCStatesTests(map[string]map[string]map[string]string{
+	defer setupCpuCStatesTests(map[string]map[string]map[string]string{
 		"cpu0": {
 			"state0": {"name": "C0", "disable": "0"},
 		},

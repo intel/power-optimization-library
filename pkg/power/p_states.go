@@ -42,7 +42,7 @@ func initPStates() featureStatus {
 		name:     "P-States",
 		initFunc: initPStates,
 	}
-	driver, err := readCoreStringProperty(0, pStatesDrvFile)
+	driver, err := readCpuStringProperty(0, pStatesDrvFile)
 	pStates.driver = driver
 	if !isPStatesDriverSupported(driver) {
 		pStates.err = fmt.Errorf("%s - unsupported driver: %s", pStates.name, driver)
@@ -58,11 +58,11 @@ func initPStates() featureStatus {
 	return pStates
 }
 func generateDefaultProfile() error {
-	maxFreq, err := readCoreIntProperty(0, cpuMaxFreqFile)
+	maxFreq, err := readCpuUintProperty(0, cpuMaxFreqFile)
 	if err != nil {
 		return err
 	}
-	minFreq, err := readCoreIntProperty(0, cpuMinFreqFile)
+	minFreq, err := readCpuUintProperty(0, cpuMinFreqFile)
 	if err != nil {
 		return err
 	}
@@ -76,43 +76,43 @@ func generateDefaultProfile() error {
 	return nil
 }
 
-func (core *coreImpl) updateFrequencies() error {
+func (cpu *cpuImpl) updateFrequencies() error {
 	if !IsFeatureSupported(PStatesFeature) {
 		return nil
 	}
-	if core.pool.GetPowerProfile() != nil {
-		return core.setPStatesValues(core.pool.GetPowerProfile())
+	if cpu.pool.GetPowerProfile() != nil {
+		return cpu.setPStatesValues(cpu.pool.GetPowerProfile())
 	}
-	return core.setPStatesValues(defaultPowerProfile)
+	return cpu.setPStatesValues(defaultPowerProfile)
 }
 
 // setPStatesValues is an entrypoint to P-States feature consolidation
-func (core *coreImpl) setPStatesValues(powerProfile Profile) error {
-	if err := core.writeGovernorValue(powerProfile.Governor()); err != nil {
-		return fmt.Errorf("failed to set governor for core %d: %w", core.id, err)
+func (cpu *cpuImpl) setPStatesValues(powerProfile Profile) error {
+	if err := cpu.writeGovernorValue(powerProfile.Governor()); err != nil {
+		return fmt.Errorf("failed to set governor for cpu %d: %w", cpu.id, err)
 	}
 	if powerProfile.Epp() != "" {
-		if err := core.writeEppValue(powerProfile.Epp()); err != nil {
-			return fmt.Errorf("failed to set EPP value for core %d: %w", core.id, err)
+		if err := cpu.writeEppValue(powerProfile.Epp()); err != nil {
+			return fmt.Errorf("failed to set EPP value for cpu %d: %w", cpu.id, err)
 		}
 	}
-	if err := core.writeScalingMaxFreq(powerProfile.MaxFreq()); err != nil {
-		return fmt.Errorf("failed to set MaxFreq value for core %d: %w", core.id, err)
+	if err := cpu.writeScalingMaxFreq(powerProfile.MaxFreq()); err != nil {
+		return fmt.Errorf("failed to set MaxFreq value for cpu %d: %w", cpu.id, err)
 	}
-	if err := core.writeScalingMinFreq(powerProfile.MinFreq()); err != nil {
-		return fmt.Errorf("failed to set MaxFreq value for core %d: %w", core.id, err)
+	if err := cpu.writeScalingMinFreq(powerProfile.MinFreq()); err != nil {
+		return fmt.Errorf("failed to set MaxFreq value for cpu %d: %w", cpu.id, err)
 	}
 
 	return nil
 }
-func (core *coreImpl) writeGovernorValue(governor string) error {
-	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", core.id), scalingGovFile), []byte(governor), 0644)
+func (cpu *cpuImpl) writeGovernorValue(governor string) error {
+	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", cpu.id), scalingGovFile), []byte(governor), 0644)
 }
-func (core *coreImpl) writeEppValue(eppValue string) error {
-	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", core.id), eppFile), []byte(eppValue), 0644)
+func (cpu *cpuImpl) writeEppValue(eppValue string) error {
+	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", cpu.id), eppFile), []byte(eppValue), 0644)
 }
-func (core *coreImpl) writeScalingMaxFreq(freq int) error {
-	scalingFile := filepath.Join(basePath, fmt.Sprint("cpu", core.id), scalingMaxFile)
+func (cpu *cpuImpl) writeScalingMaxFreq(freq uint) error {
+	scalingFile := filepath.Join(basePath, fmt.Sprint("cpu", cpu.id), scalingMaxFile)
 	f, err := os.OpenFile(
 		scalingFile,
 		os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
@@ -129,8 +129,8 @@ func (core *coreImpl) writeScalingMaxFreq(freq int) error {
 	}
 	return nil
 }
-func (core *coreImpl) writeScalingMinFreq(freq int) error {
-	scalingFile := filepath.Join(basePath, fmt.Sprint("cpu", core.id), scalingMinFile)
+func (cpu *cpuImpl) writeScalingMinFreq(freq uint) error {
+	scalingFile := filepath.Join(basePath, fmt.Sprint("cpu", cpu.id), scalingMinFile)
 	f, err := os.OpenFile(
 		scalingFile,
 		os.O_WRONLY|os.O_TRUNC|os.O_CREATE,

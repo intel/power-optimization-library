@@ -136,7 +136,7 @@ var getNumberOfCpus = func() uint {
 
 // reads a file from a path, parses contents as an int a returns the value
 // returns Error if any step fails
-func readIntFromFile(filePath string) (int, error) {
+func readUintFromFile(filePath string) (uint, error) {
 	valueString, err := readStringFromFile(filePath)
 	if err != nil {
 		return 0, err
@@ -146,7 +146,10 @@ func readIntFromFile(filePath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return value, nil
+	if value < 0 {
+		return 0, fmt.Errorf("unexpected negative value when expecting uint")
+	}
+	return uint(value), nil
 }
 
 // reads value from a file and returns contents as a string

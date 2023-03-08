@@ -16,13 +16,12 @@ func TestIsPStatesDriverSupported(t *testing.T) {
 }
 func TestPreChecksPStates(t *testing.T) {
 	var pStates featureStatus
-	basePath = ""
 	pStates = initPStates()
 
 	assert.Equal(t, pStates.name, "P-States")
 	assert.ErrorContains(t, pStates.err, "failed to determine driver")
 
-	setupCoreTests(map[string]map[string]string{
+	teardown := setupCpuPStatesTests(map[string]map[string]string{
 		"cpu0": {
 			"min":    "111",
 			"max":    "999",
@@ -34,7 +33,8 @@ func TestPreChecksPStates(t *testing.T) {
 	assert.Equal(t, "intel_pstate", pStates.driver)
 	assert.NoError(t, pStates.err)
 
-	defer setupCoreTests(map[string]map[string]string{
+	teardown()
+	defer setupCpuPStatesTests(map[string]map[string]string{
 		"cpu0": {
 			"driver": "some_unsupported_driver",
 		},
@@ -46,17 +46,17 @@ func TestPreChecksPStates(t *testing.T) {
 }
 
 func TestCoreImpl_updateFreqValues(t *testing.T) {
-	var core *coreImpl
+	var core *cpuImpl
 	const (
 		maxDefault   = 9990
 		maxFreqToSet = 8888
 	)
 
-	core = &coreImpl{}
+	core = &cpuImpl{}
 	// p-states not supported
 	assert.NoError(t, core.updateFrequencies())
 
-	teardown := setupCoreTests(map[string]map[string]string{
+	teardown := setupCpuPStatesTests(map[string]map[string]string{
 		"cpu0": {
 			"max": fmt.Sprint(maxDefault),
 		},
@@ -65,7 +65,7 @@ func TestCoreImpl_updateFreqValues(t *testing.T) {
 
 	// set desired power profile
 	pool := new(poolMock)
-	core = &coreImpl{
+	core = &cpuImpl{
 		id:   0,
 		pool: pool,
 	}
@@ -95,11 +95,11 @@ func TestCoreImpl_setPstatsValues(t *testing.T) {
 		governorToSet = "powersave"
 		eppToSet      = "testEpp"
 	)
-	core := &coreImpl{
+	core := &cpuImpl{
 		id: 0,
 	}
 
-	teardown := setupCoreTests(map[string]map[string]string{
+	teardown := setupCpuPStatesTests(map[string]map[string]string{
 		"cpu0": {
 			"governor": "performance",
 			"max":      "9999",

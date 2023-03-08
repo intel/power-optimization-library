@@ -5,9 +5,9 @@ import (
 )
 
 type poolImpl struct {
-	name  string
-	cores CoreList
-	host  Host
+	name string
+	cpus CpuList
+	host Host
 	// P-States
 	PowerProfile Profile
 	// C-States
@@ -16,16 +16,16 @@ type poolImpl struct {
 
 type Pool interface {
 	Name() string
-	Cores() *CoreList
+	Cpus() *CpuList
 
-	SetCoreIDs(coreIDs []uint) error
-	SetCores(requestedCores CoreList) error
+	SetCpuIDs(cpuIDs []uint) error
+	SetCpus(requestedCpus CpuList) error
 
 	Remove() error
 
 	Clear() error
-	MoveCores(cores CoreList) error
-	MoveCoresIDs(coreIDs []uint) error
+	MoveCpus(cpus CpuList) error
+	MoveCpuIDs(cpuIDs []uint) error
 
 	SetPowerProfile(profile Profile) error
 	GetPowerProfile() Profile
@@ -42,34 +42,34 @@ func (pool *poolImpl) Name() string {
 	return pool.name
 }
 
-func (pool *poolImpl) Cores() *CoreList {
-	return &pool.cores
+func (pool *poolImpl) Cpus() *CpuList {
+	return &pool.cpus
 }
 
-func (pool *poolImpl) SetCoreIDs([]uint) error {
+func (pool *poolImpl) SetCpuIDs([]uint) error {
 	panic("virtual")
 } // virtual
 
-func (pool *poolImpl) SetCores(CoreList) error {
+func (pool *poolImpl) SetCpus(CpuList) error {
 	// virtual function to be overwritten by exclusivePoolType, sharedPoolType and ReservedPoolType
 	panic("scuffed")
 } //virtual
 
-func (pool *poolImpl) MoveCores(cores CoreList) error {
-	for _, core := range cores {
-		if err := core.SetPool(pool); err != nil {
+func (pool *poolImpl) MoveCpus(cpus CpuList) error {
+	for _, cpu := range cpus {
+		if err := cpu.SetPool(pool); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (pool *poolImpl) MoveCoresIDs(coreIDs []uint) error {
-	cores, err := pool.host.GetAllCores().ManyByIDs(coreIDs)
+func (pool *poolImpl) MoveCpuIDs(cpuIDs []uint) error {
+	cpus, err := pool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
 		return err
 	}
-	return pool.MoveCores(cores)
+	return pool.MoveCpus(cpus)
 }
 
 func (pool *poolImpl) Remove() error {
@@ -82,8 +82,8 @@ func (pool *poolImpl) Clear() error {
 
 func (pool *poolImpl) SetPowerProfile(profile Profile) error {
 	pool.PowerProfile = profile
-	for _, core := range pool.cores {
-		err := core.consolidate()
+	for _, cpu := range pool.cpus {
+		err := cpu.consolidate()
 		if err != nil {
 			return err
 		}
@@ -107,26 +107,26 @@ type sharedPoolType struct {
 	poolImpl
 }
 
-func (sharedPool *sharedPoolType) SetCoreIDs(coreIDs []uint) error {
-	cores, err := sharedPool.host.GetAllCores().ManyByIDs(coreIDs)
+func (sharedPool *sharedPoolType) SetCpuIDs(cpuIDs []uint) error {
+	cores, err := sharedPool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
-		return fmt.Errorf("core out of range: %w", err)
+		return fmt.Errorf("cpuCore out of range: %w", err)
 	}
-	return sharedPool.SetCores(cores)
+	return sharedPool.SetCpus(cores)
 }
 
-// SetCores on shared pool with place all desired cores in shared pool
-// undesired cores that were in the shared pool will be placed in the reserved pool
-func (sharedPool *sharedPoolType) SetCores(requestedCores CoreList) error {
-	for _, core := range *sharedPool.host.GetAllCores() {
-		if requestedCores.Contains(core) {
-			err := core.SetPool(sharedPool)
+// SetCpus on shared pool with place all desired cpus in shared pool
+// undesired cpus that were in the shared pool will be placed in the reserved pool
+func (sharedPool *sharedPoolType) SetCpus(requestedCores CpuList) error {
+	for _, cpu := range *sharedPool.host.GetAllCpus() {
+		if requestedCores.Contains(cpu) {
+			err := cpu.SetPool(sharedPool)
 			if err != nil {
 				return err
 			}
 		} else {
-			if core.getPool() == sharedPool { // move cores we don't want if the shared pool to reserved, don't touch any exclusive
-				err := core.SetPool(sharedPool.host.GetReservedPool())
+			if cpu.getPool() == sharedPool { // move cpus we don't want if the shared pool to reserved, don't touch any exclusive
+				err := cpu.SetPool(sharedPool.host.GetReservedPool())
 				if err != nil {
 					return err
 				}
@@ -137,7 +137,7 @@ func (sharedPool *sharedPoolType) SetCores(requestedCores CoreList) error {
 }
 
 func (sharedPool *sharedPoolType) Clear() error {
-	return sharedPool.SetCores(CoreList{})
+	return sharedPool.SetCpus(CpuList{})
 }
 func (sharedPool *sharedPoolType) Remove() error {
 	return fmt.Errorf("shared pool canot be removed")
@@ -147,43 +147,43 @@ type reservedPoolType struct {
 	poolImpl
 }
 
-func (reservedPool *reservedPoolType) SetCoreIDs(coreIDs []uint) error {
-	cores, err := reservedPool.host.GetAllCores().ManyByIDs(coreIDs)
+func (reservedPool *reservedPoolType) SetCpuIDs(cpuIDs []uint) error {
+	cpus, err := reservedPool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
-		return fmt.Errorf("core out of range: %w", err)
+		return fmt.Errorf("cpuCore out of range: %w", err)
 	}
-	return reservedPool.SetCores(cores)
+	return reservedPool.SetCpus(cpus)
 }
 func (reservedPool *reservedPoolType) SetPowerProfile(Profile) error {
 	return fmt.Errorf("cannot set power profile for reserved pool")
 }
 
-func (reservedPool *reservedPoolType) SetCores(cores CoreList) error {
+func (reservedPool *reservedPoolType) SetCpus(cores CpuList) error {
 	/*
-		case 1: core in any exclusive pool, not passed matching IDs -> untouched
-		case 2: core in any exclusive pool, matching passed IDs -> error
+		case 1: cpu in any exclusive pool, not passed matching IDs -> untouched
+		case 2: cpu in any exclusive pool, matching passed IDs -> error
 
-		case 3: core in shared pool, not matching IDs passed -> untouched
-		case 4: core in shared pool, IDs match passed -> move to reserved
+		case 3: cpu in shared pool, not matching IDs passed -> untouched
+		case 4: cpu in shared pool, IDs match passed -> move to reserved
 
-		case 5: core in reserved pool, not matching IDs passed -> move to shared
-		case 6: core in reserved pool, IDs match passed -> untouched
+		case 5: cpu in reserved pool, not matching IDs passed -> move to shared
+		case 6: cpu in reserved pool, IDs match passed -> untouched
 	*/
 
 	sharedPool := reservedPool.host.GetSharedPool()
 
-	for _, core := range *reservedPool.host.GetAllCores() {
-		if cores.Contains(core) { // case 2,4, 6
-			if core.getPool().isExclusive() { // case 2
-				return fmt.Errorf("cores cannot be moved directly from exclusive to reserved pool")
+	for _, cpu := range *reservedPool.host.GetAllCpus() {
+		if cores.Contains(cpu) { // case 2,4, 6
+			if cpu.getPool().isExclusive() { // case 2
+				return fmt.Errorf("cpus cannot be moved directly from exclusive to reserved pool")
 			}
-			err := core.SetPool(reservedPool) // case 4
+			err := cpu.SetPool(reservedPool) // case 4
 			if err != nil {
 				return err
 			}
 		} else { // case 1,3,5
-			if core.getPool() == reservedPool { // case 5
-				err := core.SetPool(sharedPool)
+			if cpu.getPool() == reservedPool { // case 5
+				err := cpu.SetPool(sharedPool)
 				if err != nil {
 					return err
 				}
@@ -199,33 +199,33 @@ func (reservedPool *reservedPoolType) Remove() error {
 }
 
 func (reservedPool *reservedPoolType) Clear() error {
-	return reservedPool.SetCores(CoreList{})
+	return reservedPool.SetCpus(CpuList{})
 }
 
 type exclusivePoolType struct {
 	poolImpl
 }
 
-func (pool *exclusivePoolType) SetCoreIDs(coreIDs []uint) error {
-	cores, err := pool.host.GetAllCores().ManyByIDs(coreIDs)
+func (pool *exclusivePoolType) SetCpuIDs(cpuIDs []uint) error {
+	cpus, err := pool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
-		return fmt.Errorf("core out of range: %w", err)
+		return fmt.Errorf("cpuCore out of range: %w", err)
 	}
-	return pool.SetCores(cores)
+	return pool.SetCpus(cpus)
 }
 
-func (pool *exclusivePoolType) SetCores(requestedCores CoreList) error {
-	for _, core := range *pool.host.GetAllCores() {
-		if requestedCores.Contains(core) {
-			err := core.SetPool(pool)
+func (pool *exclusivePoolType) SetCpus(requestedCores CpuList) error {
+	for _, cpu := range *pool.host.GetAllCpus() {
+		if requestedCores.Contains(cpu) {
+			err := cpu.SetPool(pool)
 			if err != nil {
 				return err
 			}
 		} else {
-			if core.getPool() != pool {
+			if cpu.getPool() != pool {
 				continue
 			}
-			err := core.SetPool(pool.host.GetSharedPool())
+			err := cpu.SetPool(pool.host.GetSharedPool())
 			if err != nil {
 				return err
 			}
@@ -235,7 +235,7 @@ func (pool *exclusivePoolType) SetCores(requestedCores CoreList) error {
 }
 
 func (pool *exclusivePoolType) Clear() error {
-	return pool.SetCores(CoreList{})
+	return pool.SetCpus(CpuList{})
 }
 
 func (pool *exclusivePoolType) Remove() error {

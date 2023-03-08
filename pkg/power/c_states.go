@@ -74,7 +74,7 @@ func mapAvailableCStates() error {
 			return fmt.Errorf("failed to extract C-State number %s: %w", dirName, err)
 		}
 
-		stateName, err := readCoreStringProperty(0, fmt.Sprintf(cStateNameFileFmt, stateNumber))
+		stateName, err := readCpuStringProperty(0, fmt.Sprintf(cStateNameFileFmt, stateNumber))
 		if err != nil {
 			return fmt.Errorf("could not read C-State %d name: %w", stateNumber, err)
 		}
@@ -118,8 +118,8 @@ func (pool *poolImpl) SetCStates(states CStates) error {
 		return err
 	}
 	pool.CStatesProfile = &states
-	for _, core := range pool.cores {
-		if err := core.consolidate(); err != nil {
+	for _, cpu := range pool.cpus {
+		if err := cpu.consolidate(); err != nil {
 			return fmt.Errorf("failed to apply c-states: %w", err)
 		}
 	}
@@ -130,34 +130,34 @@ func (pool *poolImpl) getCStates() *CStates {
 	return pool.CStatesProfile
 }
 
-func (core *coreImpl) SetCStates(cStates CStates) error {
+func (cpu *cpuImpl) SetCStates(cStates CStates) error {
 	if !IsFeatureSupported(CStatesFeature) {
 		return featureList.getFeatureIdError(CStatesFeature)
 	}
 	if err := validateCStates(cStates); err != nil {
 		return err
 	}
-	core.cStates = &cStates
-	return core.updateCStates()
+	cpu.cStates = &cStates
+	return cpu.updateCStates()
 }
-func (core *coreImpl) updateCStates() error {
+func (cpu *cpuImpl) updateCStates() error {
 	if !IsFeatureSupported(CStatesFeature) {
 		return nil
 	}
-	if core.cStates != nil && *core.cStates != nil {
-		return core.applyCStates(core.cStates)
+	if cpu.cStates != nil && *cpu.cStates != nil {
+		return cpu.applyCStates(cpu.cStates)
 	}
-	if core.pool.getCStates() != nil {
-		return core.applyCStates(core.pool.getCStates())
+	if cpu.pool.getCStates() != nil {
+		return cpu.applyCStates(cpu.pool.getCStates())
 	}
-	return core.applyCStates(&defaultCStates)
+	return cpu.applyCStates(&defaultCStates)
 }
 
-func (core *coreImpl) applyCStates(desiredCStates *CStates) error {
+func (cpu *cpuImpl) applyCStates(desiredCStates *CStates) error {
 	for state, enabled := range *desiredCStates {
 		stateFilePath := filepath.Join(
 			basePath,
-			fmt.Sprint("cpu", core.id),
+			fmt.Sprint("cpu", cpu.id),
 			fmt.Sprintf(cStateDisableFileFmt, cStatesNamesMap[state]),
 		)
 		content := make([]byte, 1)
@@ -167,7 +167,7 @@ func (core *coreImpl) applyCStates(desiredCStates *CStates) error {
 			content[0] = '1' // write '1' to disable the c state
 		}
 		if err := os.WriteFile(stateFilePath, content, 0644); err != nil {
-			return fmt.Errorf("could not apply cstate %s on core %d: %w", state, core.id, err)
+			return fmt.Errorf("could not apply cstate %s on cpu %d: %w", state, cpu.id, err)
 		}
 	}
 	return nil

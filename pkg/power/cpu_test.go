@@ -12,28 +12,28 @@ import (
 	"testing"
 )
 
-type coreMock struct {
+type cpuMock struct {
 	mock.Mock
 }
 
-func (m *coreMock) SetCStates(cStates CStates) error {
+func (m *cpuMock) SetCStates(cStates CStates) error {
 	return m.Called(cStates).Error(0)
 }
 
-func (m *coreMock) _setPoolProperty(pool Pool) {
+func (m *cpuMock) _setPoolProperty(pool Pool) {
 	m.Called(pool)
 }
-func (m *coreMock) consolidate() error {
+func (m *cpuMock) consolidate() error {
 	return m.Called().Error(0)
 }
-func (m *coreMock) doSetPool(pool Pool) error {
+func (m *cpuMock) doSetPool(pool Pool) error {
 	return m.Called(pool).Error(0)
 }
-func (m *coreMock) GetID() uint {
+func (m *cpuMock) GetID() uint {
 	args := m.Called()
 	return args.Get(0).(uint)
 }
-func (m *coreMock) getPool() Pool {
+func (m *cpuMock) getPool() Pool {
 	args := m.Called().Get(0)
 	if args == nil {
 		return nil
@@ -41,13 +41,13 @@ func (m *coreMock) getPool() Pool {
 		return args.(Pool)
 	}
 }
-func (m *coreMock) SetPool(pool Pool) error {
+func (m *cpuMock) SetPool(pool Pool) error {
 	return m.Called(pool).Error(0)
 }
 
-func setupCoreTests(cpufiles map[string]map[string]string) func() {
+func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
 	origBasePath := basePath
-	basePath = "testing/cores"
+	basePath = "testing/cpus"
 	defaultDefaultPowerProfile := defaultPowerProfile
 
 	// backup pointer to function that gets all CPUs
@@ -63,11 +63,11 @@ func setupCoreTests(cpufiles map[string]map[string]string) func() {
 		defaultPowerProfile = &profileImpl{}
 		if max, ok := cpu0["max"]; ok {
 			max, _ := strconv.Atoi(max)
-			defaultPowerProfile.max = max
+			defaultPowerProfile.max = uint(max)
 		}
 		if min, ok := cpu0["min"]; ok {
 			min, _ := strconv.Atoi(min)
-			defaultPowerProfile.min = min
+			defaultPowerProfile.min = uint(min)
 		}
 		if governor, ok := cpu0["governor"]; ok {
 			defaultPowerProfile.governor = governor
@@ -97,7 +97,7 @@ func setupCoreTests(cpufiles map[string]map[string]string) func() {
 		}
 	}
 	return func() {
-		// wipe created cores dir
+		// wipe created cpus dir
 		os.RemoveAll(strings.Split(basePath, "/")[0])
 		// revert cpu /sys path
 		basePath = origBasePath
@@ -118,36 +118,37 @@ func TestNewCore(t *testing.T) {
 			"epp": "some",
 		},
 	}
-	defer setupCoreTests(cpufiles)()
+	defer setupCpuPStatesTests(cpufiles)()
 
 	// happy path - ensure values from files are read correctly
-
-	core, err := newCore(0)
+	core := &cpuCore{}
+	cpu, err := newCpu(0, core)
 	assert.NoError(t, err)
 
-	assert.NotNil(t, core.(*coreImpl).mutex)
+	assert.NotNil(t, cpu.(*cpuImpl).mutex)
 	// we don't want to compare value of new mutex, so we set it to nil
-	core.(*coreImpl).mutex = nil
-	assert.Equal(t, &coreImpl{
-		id: 0,
-	}, core)
+	cpu.(*cpuImpl).mutex = nil
+	assert.Equal(t, &cpuImpl{
+		id:   0,
+		core: core,
+	}, cpu)
 
 	// now "break" P-States by setting a feature error
 	featureList[PStatesFeature].err = fmt.Errorf("some error")
 
-	core, err = newCore(0)
+	cpu, err = newCpu(0, nil)
 
 	assert.NoError(t, err)
 
-	assert.NotNil(t, core.(*coreImpl).mutex)
+	assert.NotNil(t, cpu.(*cpuImpl).mutex)
 	// Ensure P-States stuff was never read by ensuring related properties are 0
-	core.(*coreImpl).mutex = nil
-	assert.Equal(t, &coreImpl{
+	cpu.(*cpuImpl).mutex = nil
+	assert.Equal(t, &cpuImpl{
 		id: 0,
-	}, core)
+	}, cpu)
 }
 
-func TestCoreImpl_SetPool(t *testing.T) {
+func TestCpuImpl_SetPool(t *testing.T) {
 	// feature errors are set so functions inside consolidate() return without doing anything
 	host := new(hostMock)
 
@@ -155,15 +156,15 @@ func TestCoreImpl_SetPool(t *testing.T) {
 	sharedPool.On("isExclusive").Return(false)
 	sharedPool.On("getHost").Return(host)
 	sharedPool.On("Name").Return("shared")
-	sharedPoolCores := make(CoreList, 8)
-	sharedPool.On("Cores").Return(&sharedPoolCores)
+	sharedPoolCores := make(CpuList, 8)
+	sharedPool.On("Cpus").Return(&sharedPoolCores)
 
 	reservedPool := new(poolMock)
 	reservedPool.On("isExclusive").Return(false)
 	reservedPool.On("getHost").Return(host)
 	reservedPool.On("Name").Return("reserved")
-	reservedPoolCores := make(CoreList, 8)
-	reservedPool.On("Cores").Return(&reservedPoolCores)
+	reservedPoolCores := make(CpuList, 8)
+	reservedPool.On("Cpus").Return(&reservedPoolCores)
 
 	host.On("GetReservedPool").Return(reservedPool)
 	host.On("GetSharedPool").Return(sharedPool)
@@ -172,108 +173,108 @@ func TestCoreImpl_SetPool(t *testing.T) {
 	exclusivePool1.On("isExclusive").Return(true)
 	exclusivePool1.On("getHost").Return(host)
 	exclusivePool1.On("Name").Return("excl1")
-	exclusivePool1Cores := make(CoreList, 8)
-	exclusivePool1.On("Cores").Return(&exclusivePool1Cores)
+	exclusivePool1Cores := make(CpuList, 8)
+	exclusivePool1.On("Cpus").Return(&exclusivePool1Cores)
 
 	exclusivePool2 := new(poolMock)
 	exclusivePool2.On("isExclusive").Return(true)
 	exclusivePool2.On("getHost").Return(host)
 	exclusivePool2.On("Name").Return("excl2")
-	exclusivePool2Cores := make(CoreList, 8)
-	exclusivePool2.On("Cores").Return(&exclusivePool2Cores)
+	exclusivePool2Cores := make(CpuList, 8)
+	exclusivePool2.On("Cpus").Return(&exclusivePool2Cores)
 
-	core := &coreImpl{
+	cpu := &cpuImpl{
 		id:    0,
 		mutex: &sync.Mutex{},
 		pool:  sharedPool,
 	}
 	// nil pool
-	assert.ErrorContains(t, core.SetPool(nil), "cannot be nil")
+	assert.ErrorContains(t, cpu.SetPool(nil), "cannot be nil")
 
 	// current == target pool, case 0
-	assert.NoError(t, core.SetPool(sharedPool))
+	assert.NoError(t, cpu.SetPool(sharedPool))
 	sharedPool.AssertNotCalled(t, "isExclusive")
-	assert.True(t, core.pool == sharedPool)
+	assert.True(t, cpu.pool == sharedPool)
 
 	// shared to reserved
-	sharedPoolCores[0] = core
-	core.pool = sharedPool
-	assert.NoError(t, core.SetPool(reservedPool))
-	assert.True(t, core.pool == reservedPool)
+	sharedPoolCores[0] = cpu
+	cpu.pool = sharedPool
+	assert.NoError(t, cpu.SetPool(reservedPool))
+	assert.True(t, cpu.pool == reservedPool)
 
 	// shared to shared
-	core.pool = sharedPool
-	sharedPoolCores[0] = core
-	assert.NoError(t, core.SetPool(sharedPool))
-	assert.True(t, core.pool == sharedPool)
+	cpu.pool = sharedPool
+	sharedPoolCores[0] = cpu
+	assert.NoError(t, cpu.SetPool(sharedPool))
+	assert.True(t, cpu.pool == sharedPool)
 
 	// shared to exclusive
-	core.pool = sharedPool
-	sharedPoolCores[0] = core
-	assert.NoError(t, core.SetPool(exclusivePool1))
-	assert.True(t, core.pool == exclusivePool1)
+	cpu.pool = sharedPool
+	sharedPoolCores[0] = cpu
+	assert.NoError(t, cpu.SetPool(exclusivePool1))
+	assert.True(t, cpu.pool == exclusivePool1)
 
 	// reserved to reserved
-	core.pool = reservedPool
-	reservedPoolCores[0] = core
-	assert.NoError(t, core.SetPool(reservedPool))
-	assert.True(t, core.pool == reservedPool)
+	cpu.pool = reservedPool
+	reservedPoolCores[0] = cpu
+	assert.NoError(t, cpu.SetPool(reservedPool))
+	assert.True(t, cpu.pool == reservedPool)
 
 	// reserved to shared
-	core.pool = reservedPool
-	reservedPoolCores[0] = core
-	assert.NoError(t, core.SetPool(sharedPool))
-	assert.True(t, core.pool == sharedPool)
+	cpu.pool = reservedPool
+	reservedPoolCores[0] = cpu
+	assert.NoError(t, cpu.SetPool(sharedPool))
+	assert.True(t, cpu.pool == sharedPool)
 
 	// reserved to exclusive
-	core.pool = reservedPool
-	reservedPoolCores[0] = core
-	assert.ErrorContains(t, core.SetPool(exclusivePool1), "reserved to exclusive")
-	assert.True(t, core.pool == reservedPool)
+	cpu.pool = reservedPool
+	reservedPoolCores[0] = cpu
+	assert.ErrorContains(t, cpu.SetPool(exclusivePool1), "reserved to exclusive")
+	assert.True(t, cpu.pool == reservedPool)
 
 	// exclusive to reserved
-	core.pool = exclusivePool1
-	exclusivePool1Cores[0] = core
-	assert.ErrorContains(t, core.SetPool(reservedPool), "exclusive to reserved")
-	assert.True(t, core.pool == exclusivePool1)
+	cpu.pool = exclusivePool1
+	exclusivePool1Cores[0] = cpu
+	assert.ErrorContains(t, cpu.SetPool(reservedPool), "exclusive to reserved")
+	assert.True(t, cpu.pool == exclusivePool1)
 
 	// exclusive to shared
-	core.pool = exclusivePool1
-	exclusivePool1Cores[0] = core
-	assert.NoError(t, core.SetPool(sharedPool))
-	assert.True(t, core.pool == sharedPool)
+	cpu.pool = exclusivePool1
+	exclusivePool1Cores[0] = cpu
+	assert.NoError(t, cpu.SetPool(sharedPool))
+	assert.True(t, cpu.pool == sharedPool)
 
 	// exclusive to same exclusive
-	core.pool = exclusivePool1
-	exclusivePool1Cores[0] = core
-	assert.NoError(t, core.SetPool(exclusivePool1))
-	assert.True(t, core.pool == exclusivePool1)
+	cpu.pool = exclusivePool1
+	exclusivePool1Cores[0] = cpu
+	assert.NoError(t, cpu.SetPool(exclusivePool1))
+	assert.True(t, cpu.pool == exclusivePool1)
 
 	//exclusive to another exclusive
-	core.pool = exclusivePool1
-	exclusivePool1Cores[0] = core
-	assert.ErrorContains(t, core.SetPool(exclusivePool2), " exclusive to different exclusive")
-	assert.True(t, core.pool == exclusivePool1)
+	cpu.pool = exclusivePool1
+	exclusivePool1Cores[0] = cpu
+	assert.ErrorContains(t, cpu.SetPool(exclusivePool2), " exclusive to different exclusive")
+	assert.True(t, cpu.pool == exclusivePool1)
 }
 
-func TestCoreImpl_doSetPool(t *testing.T) {
+func TestCpuImpl_doSetPool(t *testing.T) {
 	var sourcePool, targetPool *poolMock
-	var core *coreImpl
+	var cpu *cpuImpl
 	// happy path
 	sourcePool = new(poolMock)
 	sourcePool.On("Name").Return("sauce")
 
 	targetPool = new(poolMock)
 	targetPool.On("name").Return("target")
-	core = &coreImpl{
+	cpu = &cpuImpl{
 		pool:  sourcePool,
 		mutex: &sync.Mutex{},
 	}
-	sourcePool.On("Cores").Return(&CoreList{core})
-	targetPool.On("Cores").Return(&CoreList{})
+	sourcePool.On("Cpus").Return(&CpuList{cpu})
+	targetPool.On("Cpus").Return(&CpuList{})
 
-	assert.NoError(t, core.doSetPool(targetPool))
-	assert.True(t, core.pool == targetPool)
+	assert.NoError(t, cpu.doSetPool(targetPool))
+	assert.True(t, cpu.pool == targetPool)
 
 	// remove failure
 	sourcePool = new(poolMock)
@@ -281,95 +282,68 @@ func TestCoreImpl_doSetPool(t *testing.T) {
 
 	targetPool = new(poolMock)
 	targetPool.On("name").Return("target")
-	core = &coreImpl{
+	cpu = &cpuImpl{
 		pool:  sourcePool,
 		mutex: &sync.Mutex{},
 	}
-	sourcePool.On("Cores").Return(&CoreList{})
-	targetPool.On("Cores").Return(&CoreList{})
+	sourcePool.On("Cpus").Return(&CpuList{})
+	targetPool.On("Cpus").Return(&CpuList{})
 
-	assert.ErrorContains(t, core.doSetPool(targetPool), "not in pool")
-	assert.True(t, core.pool == sourcePool)
-}
-
-func TestCoreImpl_getAllCores(t *testing.T) {
-	teardown := setupCoreTests(map[string]map[string]string{
-		"cpu0": {
-			"max": "123",
-			"min": "100",
-		},
-		"cpu1": {
-			"max": "124",
-			"min": "99",
-		},
-	})
-	defer teardown()
-
-	cores, err := getAllCores()
-	assert.NoError(t, err)
-
-	assert.Len(t, cores, 2)
-	assert.Equal(t, cores[0], &coreImpl{
-		id:    0,
-		mutex: cores[0].(*coreImpl).mutex,
-	})
-	assert.Equal(t, cores[1], &coreImpl{
-		id:    1,
-		mutex: cores[1].(*coreImpl).mutex,
-	})
+	assert.ErrorContains(t, cpu.doSetPool(targetPool), "not in pool")
+	assert.True(t, cpu.pool == sourcePool)
 }
 
 func TestCoreList_IDs(t *testing.T) {
-	cores := CoreList{}
+	cpus := CpuList{}
 	var expectedIDs []uint
 	for i := uint(0); i < 5; i++ {
-		mockedCore := new(coreMock)
+		mockedCore := new(cpuMock)
 		mockedCore.On("GetID").Return(i)
-		cores = append(cores, mockedCore)
+		cpus = append(cpus, mockedCore)
 		expectedIDs = append(expectedIDs, i)
 	}
-	assert.ElementsMatch(t, cores.IDs(), expectedIDs)
+	assert.ElementsMatch(t, cpus.IDs(), expectedIDs)
 }
 
 func TestCoreList_ByID(t *testing.T) {
 	// test for quick get to skip iteration over list when index == coreId
-	cores := CoreList{}
+	cpus := CpuList{}
 	for i := uint(0); i < 5; i++ {
-		mockedCore := new(coreMock)
+		mockedCore := new(cpuMock)
 		mockedCore.On("GetID").Return(i)
-		cores = append(cores, mockedCore)
+		cpus = append(cpus, mockedCore)
 	}
 
-	assert.Equal(t, cores[2], cores.ByID(2))
-	cores[0].(*coreMock).AssertNotCalled(t, "GetID")
-	cores[1].(*coreMock).AssertNotCalled(t, "GetID")
+	assert.Equal(t, cpus[2], cpus.ByID(2))
+	cpus[0].(*cpuMock).AssertNotCalled(t, "GetID")
+	cpus[1].(*cpuMock).AssertNotCalled(t, "GetID")
 
 	// test for when index != coreID and have to iterate
-	cores = CoreList{}
+	cpus = CpuList{}
 	for _, u := range []uint{56, 1, 6, 99, 2, 11} {
-		mocked := new(coreMock)
+		mocked := new(cpuMock)
 		mocked.On("GetID").Return(u)
-		cores = append(cores, mocked)
+		cpus = append(cpus, mocked)
 	}
-	assert.Equal(t, cores[3], cores.ByID(99))
-	assert.Equal(t, cores[5], cores.ByID(11))
+	assert.Equal(t, cpus[3], cpus.ByID(99))
+	assert.Equal(t, cpus[5], cpus.ByID(11))
 
 	// not in list
-	assert.Nil(t, cores.ByID(77))
+	assert.Nil(t, cpus.ByID(77))
 }
 
 func TestCoreList_ManyByIDs(t *testing.T) {
-	cores := CoreList{}
+	cpus := CpuList{}
 	for i := uint(0); i < 5; i++ {
-		mockedCore := new(coreMock)
+		mockedCore := new(cpuMock)
 		mockedCore.On("GetID").Return(i)
-		cores = append(cores, mockedCore)
+		cpus = append(cpus, mockedCore)
 	}
-	returnedList, err := cores.ManyByIDs([]uint{1, 3})
-	assert.ElementsMatch(t, returnedList, []Core{cores[1], cores[3]})
+	returnedList, err := cpus.ManyByIDs([]uint{1, 3})
+	assert.ElementsMatch(t, returnedList, []Cpu{cpus[1], cpus[3]})
 	assert.NoError(t, err)
 
 	// out of range#
-	returnedList, err = cores.ManyByIDs([]uint{6})
+	returnedList, err = cpus.ManyByIDs([]uint{6})
 	assert.Error(t, err)
 }

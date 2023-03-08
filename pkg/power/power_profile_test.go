@@ -16,8 +16,8 @@ func TestNewProfile(t *testing.T) {
 
 	profile, err = NewPowerProfile("name", 0, 100, cpuPolicyPowersave, "epp")
 	assert.Equal(t, "name", profile.(*profileImpl).name)
-	assert.Equal(t, 0, profile.(*profileImpl).min)
-	assert.Equal(t, 100*1000, profile.(*profileImpl).max)
+	assert.Equal(t, uint(0), profile.(*profileImpl).min)
+	assert.Equal(t, uint(100*1000), profile.(*profileImpl).max)
 	assert.Equal(t, "powersave", profile.(*profileImpl).governor)
 	assert.Equal(t, "epp", profile.(*profileImpl).epp)
 

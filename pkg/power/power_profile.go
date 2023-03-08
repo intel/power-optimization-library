@@ -6,8 +6,8 @@ import (
 
 type profileImpl struct {
 	name     string
-	max      int
-	min      int
+	max      uint
+	min      uint
 	epp      string
 	governor string
 	// todo classification
@@ -18,15 +18,15 @@ type profileImpl struct {
 type Profile interface {
 	Name() string
 	Epp() string
-	MaxFreq() int
-	MinFreq() int
+	MaxFreq() uint
+	MinFreq() uint
 	Governor() string
 }
 
 // todo add simple constructor that determines frequencies automagically?
 
 // NewPowerProfile creates a power P-States power profile,
-func NewPowerProfile(name string, minFreq int, maxFreq int, governor string, epp string) (Profile, error) {
+func NewPowerProfile(name string, minFreq uint, maxFreq uint, governor string, epp string) (Profile, error) {
 	if !featureList.isFeatureIdSupported(PStatesFeature) {
 		return nil, featureList.getFeatureIdError(PStatesFeature)
 	}
@@ -57,11 +57,11 @@ func (p *profileImpl) Epp() string {
 	return p.epp
 }
 
-func (p *profileImpl) MaxFreq() int {
+func (p *profileImpl) MaxFreq() uint {
 	return p.max
 }
 
-func (p *profileImpl) MinFreq() int {
+func (p *profileImpl) MinFreq() uint {
 	return p.min
 }
 

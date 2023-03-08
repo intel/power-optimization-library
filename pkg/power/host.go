@@ -10,7 +10,7 @@ type hostImpl struct {
 	exclusivePools PoolList
 	reservedPool   Pool
 	sharedPool     Pool
-	allCores       CoreList
+	topology       Topology
 	featureStates  *FeatureSet
 }
 
@@ -27,7 +27,8 @@ type Host interface {
 	GetExclusivePool(poolName string) Pool
 	GetAllExclusivePools() *PoolList
 
-	GetAllCores() *CoreList
+	GetAllCpus() *CpuList
+	Topology() Topology
 
 	AvailableCStates() []string
 	ValidateCStates(states CStates) error
@@ -49,28 +50,28 @@ func initHost(nodeName string) (Host, error) {
 		host: host,
 	}}
 	host.sharedPool = &sharedPoolType{poolImpl{
-		name:  sharedPoolName,
-		cores: CoreList{},
-		host:  host,
+		name: sharedPoolName,
+		cpus: CpuList{},
+		host: host,
 	}}
 
-	allCores, err := getAllCores()
+	topology, err := discoverTopology()
 	if err != nil {
-		log.Error(err, "failed to discover cpus")
+		log.Error(err, "failed to discover systemTopology")
 		return nil, fmt.Errorf("failed to init host: %w", err)
 	}
-	for _, core := range allCores {
-		core._setPoolProperty(host.reservedPool)
+	for _, cpu := range *topology.CPUs() {
+		cpu._setPoolProperty(host.reservedPool)
 	}
 
-	log.Info("discovered cores", "cores", len(allCores))
+	log.Info("discovered cpus", "cpus", len(*topology.CPUs()))
 
-	host.allCores = allCores
+	host.topology = topology
 
-	// create a shallow copy of pointers, changes to underlying core object will reflect in both lists,
+	// create a shallow copy of pointers, changes to underlying cpu object will reflect in both lists,
 	// changes to each list will not affect the other
-	host.reservedPool.(*reservedPoolType).cores = make(CoreList, len(allCores))
-	copy(host.reservedPool.(*reservedPoolType).cores, allCores)
+	host.reservedPool.(*reservedPoolType).cpus = make(CpuList, len(*topology.CPUs()))
+	copy(host.reservedPool.(*reservedPoolType).cpus, *topology.CPUs())
 	return host, nil
 }
 
@@ -92,9 +93,9 @@ func (host *hostImpl) AddExclusivePool(poolName string) (Pool, error) {
 		return host.exclusivePools[i], fmt.Errorf("pool with name %s already exists", poolName)
 	}
 	var pool Pool = &exclusivePoolType{poolImpl{
-		name:  poolName,
-		cores: make([]Core, 0),
-		host:  host,
+		name: poolName,
+		cpus: make([]Cpu, 0),
+		host: host,
 	}}
 
 	host.exclusivePools.add(pool)
@@ -116,10 +117,14 @@ func (host *hostImpl) GetFeaturesInfo() FeatureSet {
 	return *host.featureStates
 }
 
-func (host *hostImpl) GetAllCores() *CoreList {
-	return &host.allCores
+func (host *hostImpl) GetAllCpus() *CpuList {
+	return host.topology.CPUs()
 }
 
 func (host *hostImpl) GetAllExclusivePools() *PoolList {
 	return &host.exclusivePools
+}
+
+func (host *hostImpl) Topology() Topology {
+	return host.topology
 }

@@ -148,7 +148,7 @@ func TestCreateInstance(t *testing.T) {
 //		"cpu6": cpuFreqs,
 //		"cpu7": cpuFreqs,
 //	}
-//	setupCoreTests(cpuFreqsFiles)
+//	setupCpuPStatesTests(cpuFreqsFiles)
 //	setupCoreCStatesTests(cstatesFiles)
 //
 //	governorList := []string{"powersave", "performance"}

@@ -35,31 +35,31 @@ func (m *poolMock) Name() string {
 	return m.Called().String(0)
 }
 
-func (m *poolMock) Cores() *CoreList {
+func (m *poolMock) Cpus() *CpuList {
 	args := m.Called().Get(0)
 	if args == nil {
 		return nil
 	}
-	return args.(*CoreList)
+	return args.(*CpuList)
 }
 
-func (m *poolMock) SetCores(cores CoreList) error {
+func (m *poolMock) SetCpus(cores CpuList) error {
 	return m.Called(cores).Error(0)
 }
 
-func (m *poolMock) SetCoreIDs(coreIDs []uint) error {
-	return m.Called(coreIDs).Error(0)
+func (m *poolMock) SetCpuIDs(cpuIDs []uint) error {
+	return m.Called(cpuIDs).Error(0)
 }
 
 func (m *poolMock) Remove() error {
 	return m.Called().Error(0)
 }
 
-func (m *poolMock) MoveCoresIDs(coreIDs []uint) error {
+func (m *poolMock) MoveCpuIDs(coreIDs []uint) error {
 	return m.Called(coreIDs).Error(0)
 }
 
-func (m *poolMock) MoveCores(cores CoreList) error {
+func (m *poolMock) MoveCpus(cores CpuList) error {
 	return m.Called(cores).Error(0)
 }
 
@@ -116,76 +116,76 @@ func TestPoolList(t *testing.T) {
 }
 func TestPoolImpl_MoveCoresIDs(t *testing.T) {
 	host := new(hostMock)
-	host.On("GetAllCores").Return(new(CoreList))
+	host.On("GetAllCpus").Return(new(CpuList))
 	pool := &poolImpl{
 		host: host,
 	}
-	assert.NoError(t, pool.MoveCoresIDs([]uint{}))
+	assert.NoError(t, pool.MoveCpuIDs([]uint{}))
 }
 func TestPoolImpl_MoveCores(t *testing.T) {
 	// happy path
-	mockCore := new(coreMock)
-	mockCore2 := new(coreMock)
+	mockCore := new(cpuMock)
+	mockCore2 := new(cpuMock)
 	p := new(poolImpl)
 	mockCore.On("SetPool", p).Return(nil)
 	mockCore2.On("SetPool", p).Return(nil)
 
-	assert.NoError(t, p.MoveCores(CoreList{mockCore, mockCore2}))
+	assert.NoError(t, p.MoveCpus(CpuList{mockCore, mockCore2}))
 
 	mockCore.AssertExpectations(t)
 	mockCore2.AssertExpectations(t)
 }
 func TestPoolImpl_Getters(t *testing.T) {
 	name := "pool"
-	cores := CoreList{}
+	cores := CpuList{}
 	powerProfile := new(profileImpl)
 	host := new(hostMock)
 	pool := poolImpl{
 		name:         name,
-		cores:        cores,
+		cpus:         cores,
 		PowerProfile: powerProfile,
 		host:         host,
 	}
 	assert.Equal(t, name, pool.Name())
-	assert.Equal(t, &cores, pool.Cores())
+	assert.Equal(t, &cores, pool.Cpus())
 	assert.Equal(t, powerProfile, pool.GetPowerProfile())
 }
 
 func TestPoolImpl_SetCoreIDs(t *testing.T) {
 	assert.Panics(t, func() {
 		pool := poolImpl{}
-		_ = pool.SetCoreIDs([]uint{})
+		_ = pool.SetCpuIDs([]uint{})
 	})
 }
 func TestSharedPoolType_SetCoreIDs(t *testing.T) {
 	host := new(hostMock)
-	host.On("GetAllCores").Return(new(CoreList))
+	host.On("GetAllCpus").Return(new(CpuList))
 
 	pool := &sharedPoolType{poolImpl{host: host}}
-	assert.NoError(t, pool.SetCoreIDs([]uint{}))
+	assert.NoError(t, pool.SetCpuIDs([]uint{}))
 }
 func TestReservedPoolType_SetCoreIDs(t *testing.T) {
 	host := new(hostMock)
-	host.On("GetAllCores").Return(new(CoreList))
+	host.On("GetAllCpus").Return(new(CpuList))
 	host.On("GetSharedPool").Return(new(poolMock))
 
 	pool := &reservedPoolType{poolImpl{host: host}}
-	assert.NoError(t, pool.SetCoreIDs([]uint{}))
+	assert.NoError(t, pool.SetCpuIDs([]uint{}))
 }
 
 func TestExclusivePoolType_SetCoreIDs(t *testing.T) {
 	host := new(hostMock)
-	host.On("GetAllCores").Return(new(CoreList))
+	host.On("GetAllCpus").Return(new(CpuList))
 
 	pool := &exclusivePoolType{poolImpl{host: host}}
-	assert.NoError(t, pool.SetCoreIDs([]uint{}))
+	assert.NoError(t, pool.SetCpuIDs([]uint{}))
 }
 
 func TestPoolImpl_SetCores(t *testing.T) {
 	// base struct pool should always panic
 	basePool := &poolImpl{}
 	assert.Panics(t, func() {
-		_ = basePool.SetCores(CoreList{})
+		_ = basePool.SetCpus(CpuList{})
 	})
 }
 
@@ -197,9 +197,9 @@ func TestSharedPoolType_SetCores(t *testing.T) {
 		host: host,
 	}}
 
-	allCores := make(CoreList, 8)
+	allCores := make(CpuList, 8)
 	for i := range allCores {
-		core := new(coreMock)
+		core := new(cpuMock)
 		if i >= 2 && i < 5 {
 			core.On("SetPool", sharedPool).Return(nil)
 		} else {
@@ -209,18 +209,18 @@ func TestSharedPoolType_SetCores(t *testing.T) {
 		allCores[i] = core
 	}
 
-	host.On("GetAllCores").Return(&allCores)
+	host.On("GetAllCpus").Return(&allCores)
 	host.On("GetReservedPool").Return(reservedPool)
 
-	assert.NoError(t, sharedPool.SetCores(allCores[2:5]))
+	assert.NoError(t, sharedPool.SetCpus(allCores[2:5]))
 	for _, core := range allCores {
-		core.(*coreMock).AssertExpectations(t)
+		core.(*cpuMock).AssertExpectations(t)
 	}
 	// setPool error
 	err := fmt.Errorf("borked")
-	allCores[0] = new(coreMock)
-	allCores[0].(*coreMock).On("SetPool", mock.Anything).Return(err)
-	assert.ErrorIs(t, sharedPool.SetCores(allCores), err)
+	allCores[0] = new(cpuMock)
+	allCores[0].(*cpuMock).On("SetPool", mock.Anything).Return(err)
+	assert.ErrorIs(t, sharedPool.SetCpus(allCores), err)
 
 }
 
@@ -232,14 +232,14 @@ func TestReservedPoolType_SetCores(t *testing.T) {
 	exclusivePool.On("isExclusive").Return(true)
 
 	host := new(hostMock)
-	allCores := CoreList{}
-	host.On("GetAllCores").Return(&allCores)
+	allCores := CpuList{}
+	host.On("GetAllCpus").Return(&allCores)
 	host.On("GetSharedPool").Return(sharedPool)
 
-	requestedSetCores := CoreList{}
+	requestedSetCores := CpuList{}
 	reservedPool := &reservedPoolType{poolImpl{host: host}}
 	for i := 1; i <= 6; i++ {
-		core := new(coreMock)
+		core := new(cpuMock)
 		switch i {
 		case 1:
 			core.On("getPool").Return(exclusivePool)
@@ -263,15 +263,15 @@ func TestReservedPoolType_SetCores(t *testing.T) {
 		allCores.add(core)
 	}
 
-	assert.NoError(t, reservedPool.SetCores(requestedSetCores))
+	assert.NoError(t, reservedPool.SetCpus(requestedSetCores))
 	for _, core := range allCores {
-		core.(*coreMock).AssertExpectations(t)
+		core.(*cpuMock).AssertExpectations(t)
 	}
 	// now test case 2 where we expect error
-	allCores[0] = new(coreMock)
-	allCores[0].(*coreMock).On("getPool").Return(exclusivePool)
+	allCores[0] = new(cpuMock)
+	allCores[0].(*cpuMock).On("getPool").Return(exclusivePool)
 
-	assert.ErrorContains(t, reservedPool.SetCores(CoreList{allCores[0]}), "exclusive to reserved")
+	assert.ErrorContains(t, reservedPool.SetCpus(CpuList{allCores[0]}), "exclusive to reserved")
 }
 
 func TestExclusivePoolType_SetCores(t *testing.T) {
@@ -282,9 +282,9 @@ func TestExclusivePoolType_SetCores(t *testing.T) {
 		host: host,
 	}}
 
-	allCores := make(CoreList, 3)
+	allCores := make(CpuList, 3)
 	for i := range allCores {
-		core := new(coreMock)
+		core := new(cpuMock)
 		switch i {
 		case 0:
 			core.On("getPool").Return(exclusivePool)
@@ -298,39 +298,39 @@ func TestExclusivePoolType_SetCores(t *testing.T) {
 		allCores[i] = core
 	}
 
-	host.On("GetAllCores").Return(&allCores)
+	host.On("GetAllCpus").Return(&allCores)
 	host.On("GetSharedPool").Return(sharedPool)
 	// exclusive pool
-	assert.NoError(t, exclusivePool.SetCores(CoreList{allCores[2]}))
+	assert.NoError(t, exclusivePool.SetCpus(CpuList{allCores[2]}))
 	for _, core := range allCores {
-		core.(*coreMock).AssertExpectations(t)
+		core.(*cpuMock).AssertExpectations(t)
 	}
 	// setPool error
 	err := fmt.Errorf("borked")
-	allCores[0] = new(coreMock)
-	allCores[0].(*coreMock).On("SetPool", mock.Anything).Return(err)
-	assert.ErrorIs(t, exclusivePool.SetCores(CoreList{allCores[0]}), err)
+	allCores[0] = new(cpuMock)
+	allCores[0].(*cpuMock).On("SetPool", mock.Anything).Return(err)
+	assert.ErrorIs(t, exclusivePool.SetCpus(CpuList{allCores[0]}), err)
 }
 
 func TestPoolImpl_SetPowerProfile(t *testing.T) {
-	cores := make(CoreList, 2)
+	cores := make(CpuList, 2)
 	for i := range cores {
-		core := new(coreMock)
+		core := new(cpuMock)
 		core.On("consolidate").Return(nil)
 		cores[i] = core
 	}
 
-	pool := &poolImpl{cores: cores}
+	pool := &poolImpl{cpus: cores}
 	powerProfile := new(profileImpl)
 	assert.NoError(t, pool.SetPowerProfile(powerProfile))
 	assert.True(t, pool.PowerProfile == powerProfile)
 	for _, core := range cores {
-		core.(*coreMock).AssertExpectations(t)
+		core.(*cpuMock).AssertExpectations(t)
 	}
 }
 
 func TestPoolImpl_Remove(t *testing.T) {
-	// expecting to call the 'virtual' SetCores that panics
+	// expecting to call the 'virtual' SetCpus that panics
 	assert.Panics(t, func() {
 		pool := poolImpl{}
 		pool.Remove()
@@ -340,7 +340,7 @@ func TestPoolImpl_Remove(t *testing.T) {
 
 func TestExclusivePoolType_Remove(t *testing.T) {
 	host := new(hostMock)
-	host.On("GetAllCores").Return(new(CoreList))
+	host.On("GetAllCpus").Return(new(CpuList))
 
 	pool := &exclusivePoolType{poolImpl{host: host}}
 	pools := PoolList{pool}
@@ -353,46 +353,46 @@ func TestExclusivePoolType_Remove(t *testing.T) {
 ////
 ////func (s *poolTestSuite) TestSetCStates() {
 ////	states := CStates{"C2": true, "C1": false}
-////	cores := make([]Core, 2)
-////	for i := range cores {
+////	cpus := make([]Core, 2)
+////	for i := range cpus {
 ////		core := new(coreMock)
 ////		core.On("applyCStates", states).Return(nil)
 ////		core.On("exclusiveCStates").Return(false)
-////		cores[i] = core
+////		cpus[i] = core
 ////	}
 ////	supportedFeatureErrors[CStatesFeature] = nil
 ////
-////	assert.NoError(s.T(), (&poolImpl{cores: cores}).SetCStates(states))
+////	assert.NoError(s.T(), (&poolImpl{cpus: cpus}).SetCStates(states))
 ////
-////	for _, core := range cores {
+////	for _, core := range cpus {
 ////		core.(*coreMock).AssertExpectations(s.T())
 ////	}
 ////
 ////	// fail to apply c states on one core
-////	cores = make([]Core, 2)
-////	for i := range cores {
+////	cpus = make([]Core, 2)
+////	for i := range cpus {
 ////		core := new(coreMock)
 ////		core.On("exclusiveCStates").Return(false)
-////		cores[i] = core
+////		cpus[i] = core
 ////	}
-////	cores[0].(*coreMock).On("applyCStates", states).Return(errors.New("apply fail"))
-////	cores[1].(*coreMock).On("applyCStates", states).Return(nil)
+////	cpus[0].(*coreMock).On("applyCStates", states).Return(errors.New("apply fail"))
+////	cpus[1].(*coreMock).On("applyCStates", states).Return(nil)
 ////
-////	assert.Error(s.T(), (&poolImpl{cores: cores}).SetCStates(states))
+////	assert.Error(s.T(), (&poolImpl{cpus: cpus}).SetCStates(states))
 ////
-////	for _, core := range cores {
+////	for _, core := range cpus {
 ////		core.(*coreMock).AssertExpectations(s.T())
 ////	}
 ////
-////	cores = make([]Core, 2)
-////	for i := range cores {
+////	cpus = make([]Core, 2)
+////	for i := range cpus {
 ////		core := new(coreMock)
-////		cores[i] = core
+////		cpus[i] = core
 ////	}
 ////
 ////	delete(cStatesNamesMap, "C2")
-////	assert.Error(s.T(), (&poolImpl{cores: cores}).SetCStates(states))
-////	for _, core := range cores {
+////	assert.Error(s.T(), (&poolImpl{cpus: cpus}).SetCStates(states))
+////	for _, core := range cpus {
 ////		core.(*coreMock).AssertNotCalled(s.T(), "applyCStates")
 ////	}
 ////
@@ -410,4 +410,5 @@ func TestPoolList_ByName(t *testing.T) {
 	}
 	assert.Equal(t, pools[2], pools.ByName("something"))
 	assert.Nil(t, pools.ByName("not existing"))
+
 }
