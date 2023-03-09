@@ -20,6 +20,7 @@ const (
 
 	PStatesFeature featureID = iota
 	CStatesFeature
+	UncoreFeature
 )
 
 // initialized with null logger, can be set to proper logger with SetLogger
@@ -34,6 +35,10 @@ var featureList FeatureSet = map[featureID]*featureStatus{
 	CStatesFeature: {
 		err:      uninitialisedErr,
 		initFunc: initCStates,
+	},
+	UncoreFeature: {
+		err:      uninitialisedErr,
+		initFunc: initUncore,
 	},
 }
 var uninitialisedErr = fmt.Errorf("feature uninitialized")
