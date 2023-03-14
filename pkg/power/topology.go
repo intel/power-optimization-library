@@ -10,23 +10,26 @@ const (
 type topologyTypeObj interface {
 	addCpu(uint) (Cpu, error)
 	CPUs() *CpuList
+	getID() uint
 }
 
 // parent struct to store system topology
 type (
-	systemTopology struct {
+	cpuTopology struct {
 		packages packageList
 		allCpus  CpuList
+		uncore   Uncore
 	}
 
 	Topology interface {
 		topologyTypeObj
+		hasUncore
 		Packages() *[]Package
 		Package(id uint) Package
 	}
 )
 
-func (s *systemTopology) addCpu(cpuId uint) (Cpu, error) {
+func (s *cpuTopology) addCpu(cpuId uint) (Cpu, error) {
 	var socketId uint
 	var err error
 	var cpu Cpu
@@ -53,11 +56,11 @@ func (s *systemTopology) addCpu(cpuId uint) (Cpu, error) {
 	return cpu, err
 }
 
-func (s *systemTopology) CPUs() *CpuList {
+func (s *cpuTopology) CPUs() *CpuList {
 	return &s.allCpus
 }
 
-func (s *systemTopology) Packages() *[]Package {
+func (s *cpuTopology) Packages() *[]Package {
 	pkgs := make([]Package, len(s.packages))
 
 	i := 0
@@ -68,20 +71,26 @@ func (s *systemTopology) Packages() *[]Package {
 	return &pkgs
 }
 
-func (s *systemTopology) Package(id uint) Package {
+func (s *cpuTopology) Package(id uint) Package {
 	pkg, _ := s.packages[id]
 	return pkg
+}
+
+func (s *cpuTopology) getID() uint {
+	return 0
 }
 
 // cpu socket represents a physical cpu package
 type (
 	cpuPackage struct {
-		topology *systemTopology
+		topology Topology
 		id       uint
+		uncore   Uncore
 		cpus     CpuList
 		dies     dieList
 	}
 	Package interface {
+		hasUncore
 		topologyTypeObj
 		Dies() *[]Die
 		Die(id uint) Die
@@ -117,7 +126,7 @@ func (c *cpuPackage) addCpu(cpuId uint) (Cpu, error) {
 	} else {
 		c.dies[dieId] = &cpuDie{
 			parentSocket: c,
-			id:           cpuId,
+			id:           dieId,
 			cores:        coreList{},
 			cpus:         CpuList{},
 		}
@@ -134,15 +143,21 @@ func (c *cpuPackage) CPUs() *CpuList {
 	return &c.cpus
 }
 
+func (c *cpuPackage) getID() uint {
+	return c.id
+}
+
 type (
 	cpuDie struct {
-		parentSocket *cpuPackage
+		parentSocket Package
 		id           uint
+		uncore       Uncore
 		cores        coreList
 		cpus         CpuList
 	}
 	Die interface {
 		topologyTypeObj
+		hasUncore
 		Cores() *[]Core
 		Core(id uint) Core
 	}
@@ -193,9 +208,13 @@ func (d *cpuDie) addCpu(cpuId uint) (Cpu, error) {
 	return cpu, nil
 }
 
+func (d *cpuDie) getID() uint {
+	return d.id
+}
+
 type (
 	cpuCore struct {
-		parentDie *cpuDie
+		parentDie Die
 		id        uint
 		cpus      CpuList
 	}
@@ -217,17 +236,22 @@ func (c *cpuCore) CPUs() *CpuList {
 	return &c.cpus
 }
 
-type packageList map[uint]*cpuPackage
+func (c *cpuCore) getID() uint {
+	return c.id
+}
 
-type dieList map[uint]*cpuDie
+type packageList map[uint]Package
 
-type coreList map[uint]*cpuCore
+type dieList map[uint]Die
+
+type coreList map[uint]Core
 
 var discoverTopology = func() (Topology, error) {
 	numOfCores := getNumberOfCpus()
-	topology := &systemTopology{
+	topology := &cpuTopology{
 		allCpus:  make(CpuList, numOfCores),
 		packages: packageList{},
+		uncore:   defaultUncore,
 	}
 	for i := uint(0); i < numOfCores; i++ {
 		if _, err := topology.addCpu(i); err != nil {

@@ -98,7 +98,7 @@ func TestHost_initHost(t *testing.T) {
 	const hostName = "host"
 
 	// get topology fail
-	discoverTopology = func() (Topology, error) { return new(mockSystemTopology), fmt.Errorf("error") }
+	discoverTopology = func() (Topology, error) { return new(mockCpuTopology), fmt.Errorf("error") }
 	host, err := initHost(hostName)
 	assert.Nil(t, host)
 	assert.Error(t, err)
@@ -109,7 +109,7 @@ func TestHost_initHost(t *testing.T) {
 	core2.On("_setPoolProperty", mock.Anything).Return()
 
 	mockedCores := CpuList{core1, core2}
-	topObj := new(mockSystemTopology)
+	topObj := new(mockCpuTopology)
 	topObj.On("CPUs").Return(&mockedCores)
 	discoverTopology = func() (Topology, error) { return topObj, nil }
 	host, err = initHost(hostName)
@@ -178,7 +178,7 @@ func (s *hostTestsSuite) TestRemoveExclusivePool() {
 
 func (s *hostTestsSuite) TestHostImpl_SetReservedPoolCores() {
 	cores := make(CpuList, 4)
-	topology := new(mockSystemTopology)
+	topology := new(mockCpuTopology)
 	host := &hostImpl{topology: topology}
 	for i := range cores {
 		core, err := newCpu(uint(i), nil)
@@ -203,7 +203,7 @@ func (s *hostTestsSuite) TestHostImpl_SetReservedPoolCores() {
 
 func (s *hostTestsSuite) TestAddSharedPool() {
 	cores := make(CpuList, 4)
-	topology := new(mockSystemTopology)
+	topology := new(mockCpuTopology)
 	host := &hostImpl{topology: topology}
 	host.sharedPool = &sharedPoolType{poolImpl{PowerProfile: &profileImpl{}, host: host}}
 	for i := range cores {
@@ -243,7 +243,7 @@ func (s *hostTestsSuite) TestRemoveCoreFromExclusivePool() {
 	}
 	pool.cpus = cores
 
-	topology := new(mockSystemTopology)
+	topology := new(mockCpuTopology)
 	//topology.On("CPUs").Return(cores)
 
 	host := &hostImpl{
@@ -270,7 +270,7 @@ func (s *hostTestsSuite) TestRemoveCoreFromExclusivePool() {
 }
 
 func (s *hostTestsSuite) TestAddCoresToExclusivePool() {
-	topology := new(mockSystemTopology)
+	topology := new(mockCpuTopology)
 	host := &hostImpl{
 		topology: topology,
 	}
@@ -343,7 +343,7 @@ func (s *hostTestsSuite) TestUpdateProfile() {
 }
 
 func (s *hostTestsSuite) TestRemoveCoresFromSharedPool() {
-	topology := new(mockSystemTopology)
+	topology := new(mockCpuTopology)
 	host := &hostImpl{topology: topology}
 	host.exclusivePools = []Pool{&poolImpl{
 		name:         "test",
@@ -479,7 +479,7 @@ func (s *hostTestsSuite) TestDeleteProfile() {
 	host.exclusivePools = exclusive
 	host.sharedPool = shared
 	host.reservedPool = &reservedPoolType{poolImpl{host: host}}
-	topology := new(mockSystemTopology)
+	topology := new(mockCpuTopology)
 	topology.On("CPUs").Return(&allCores)
 	host.topology = topology
 	for i := 0; i < 4; i++ {

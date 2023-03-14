@@ -57,7 +57,7 @@ func initHost(nodeName string) (Host, error) {
 
 	topology, err := discoverTopology()
 	if err != nil {
-		log.Error(err, "failed to discover systemTopology")
+		log.Error(err, "failed to discover cpuTopology")
 		return nil, fmt.Errorf("failed to init host: %w", err)
 	}
 	for _, cpu := range *topology.CPUs() {

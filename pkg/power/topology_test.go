@@ -10,11 +10,31 @@ import (
 	"testing"
 )
 
-type mockSystemTopology struct {
+type mockCpuTopology struct {
 	mock.Mock
 }
 
-func (m *mockSystemTopology) addCpu(u uint) (Cpu, error) {
+func (m *mockCpuTopology) getID() uint {
+	return m.Called().Get(0).(uint)
+}
+
+func (m *mockCpuTopology) SetUncore(uncore Uncore) error {
+	return m.Called(uncore).Error(0)
+}
+
+func (m *mockCpuTopology) applyUncore() error {
+	return m.Called().Error(0)
+}
+
+func (m *mockCpuTopology) getEffectiveUncore() Uncore {
+	ret := m.Called()
+	if ret.Get(0) != nil {
+		return ret.Get(0).(Uncore)
+	}
+	return nil
+}
+
+func (m *mockCpuTopology) addCpu(u uint) (Cpu, error) {
 	ret := m.Called(u)
 
 	var r0 Cpu
@@ -28,7 +48,7 @@ func (m *mockSystemTopology) addCpu(u uint) (Cpu, error) {
 	return r0, r1
 }
 
-func (m *mockSystemTopology) CPUs() *CpuList {
+func (m *mockCpuTopology) CPUs() *CpuList {
 	ret := m.Called()
 
 	var r0 *CpuList
@@ -39,7 +59,7 @@ func (m *mockSystemTopology) CPUs() *CpuList {
 	return r0
 }
 
-func (m *mockSystemTopology) Packages() *[]Package {
+func (m *mockCpuTopology) Packages() *[]Package {
 	ret := m.Called()
 
 	var r0 *[]Package
@@ -50,12 +70,154 @@ func (m *mockSystemTopology) Packages() *[]Package {
 	return r0
 }
 
-func (m *mockSystemTopology) Package(id uint) Package {
+func (m *mockCpuTopology) Package(id uint) Package {
 	ret := m.Called(id)
 
 	var r0 Package
 	if ret.Get(0) != nil {
 		r0 = ret.Get(0).(Package)
+	}
+
+	return r0
+}
+
+type mockCpuPackage struct {
+	mock.Mock
+}
+
+func (m *mockCpuPackage) getID() uint {
+	return m.Called().Get(0).(uint)
+}
+
+func (m *mockCpuPackage) SetUncore(uncore Uncore) error {
+	return m.Called(uncore).Error(0)
+}
+
+func (m *mockCpuPackage) applyUncore() error {
+	return m.Called().Error(0)
+}
+
+func (m *mockCpuPackage) getEffectiveUncore() Uncore {
+	ret := m.Called()
+	if ret.Get(0) != nil {
+		return ret.Get(0).(Uncore)
+	}
+	return nil
+}
+
+func (m *mockCpuPackage) addCpu(u uint) (Cpu, error) {
+	ret := m.Called(u)
+
+	var r0 Cpu
+	var r1 error
+
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(Cpu)
+	}
+	r1 = ret.Error(1)
+
+	return r0, r1
+}
+
+func (m *mockCpuPackage) CPUs() *CpuList {
+	ret := m.Called()
+
+	var r0 *CpuList
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*CpuList)
+	}
+
+	return r0
+}
+
+func (m *mockCpuPackage) Dies() *[]Die {
+	ret := m.Called()
+
+	var r0 *[]Die
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*[]Die)
+
+	}
+	return r0
+}
+
+func (m *mockCpuPackage) Die(id uint) Die {
+	ret := m.Called(id)
+
+	var r0 Die
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(Die)
+	}
+
+	return r0
+}
+
+type mockCpuDie struct {
+	mock.Mock
+}
+
+func (m *mockCpuDie) getID() uint {
+	return m.Called().Get(0).(uint)
+}
+
+func (m *mockCpuDie) SetUncore(uncore Uncore) error {
+	return m.Called(uncore).Error(0)
+}
+
+func (m *mockCpuDie) applyUncore() error {
+	return m.Called().Error(0)
+}
+
+func (m *mockCpuDie) getEffectiveUncore() Uncore {
+	ret := m.Called()
+	if ret.Get(0) != nil {
+		return ret.Get(0).(Uncore)
+	}
+	return nil
+}
+
+func (m *mockCpuDie) addCpu(u uint) (Cpu, error) {
+	ret := m.Called(u)
+
+	var r0 Cpu
+	var r1 error
+
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(Cpu)
+	}
+	r1 = ret.Error(1)
+
+	return r0, r1
+}
+
+func (m *mockCpuDie) CPUs() *CpuList {
+	ret := m.Called()
+
+	var r0 *CpuList
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*CpuList)
+	}
+
+	return r0
+}
+
+func (m *mockCpuDie) Cores() *[]Core {
+	ret := m.Called()
+
+	var r0 *[]Core
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*[]Core)
+
+	}
+	return r0
+}
+
+func (m *mockCpuDie) Core(id uint) Core {
+	ret := m.Called(id)
+
+	var r0 Core
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(Core)
 	}
 
 	return r0
@@ -180,35 +342,35 @@ func (s *topologyTestSuite) TestCpuImpl_discoverTopology() {
 
 	topology, err := discoverTopology()
 	assert.NoError(t, err)
-	topologyObj := topology.(*systemTopology)
+	topologyObj := topology.(*cpuTopology)
 
 	assert.Len(t, topologyObj.packages, 2)
 	assert.Len(t, topologyObj.allCpus, 8)
 	assert.ElementsMatch(t, topologyObj.allCpus.IDs(), []uint{0, 1, 2, 3, 4, 5, 6, 7})
-	assert.Equal(t, topologyObj.packages[0].id, uint(0))
-	assert.Equal(t, topologyObj.packages[1].id, uint(1))
+	assert.Equal(t, topologyObj.packages[0].(*cpuPackage).id, uint(0))
+	assert.Equal(t, topologyObj.packages[1].(*cpuPackage).id, uint(1))
 
-	assert.Len(t, topologyObj.packages[0].dies, 1)
-	assert.Len(t, topologyObj.packages[1].dies, 1)
-	assert.NotEqual(t, topologyObj.packages[0].dies[0], topologyObj.packages[1].dies[0])
-	assert.ElementsMatch(t, topologyObj.packages[0].cpus.IDs(), []uint{0, 1, 4, 5})
-	assert.ElementsMatch(t, topologyObj.packages[1].cpus.IDs(), []uint{2, 3, 6, 7})
+	assert.Len(t, topologyObj.packages[0].(*cpuPackage).dies, 1)
+	assert.Len(t, topologyObj.packages[1].(*cpuPackage).dies, 1)
+	assert.NotEqual(t, topologyObj.packages[0].(*cpuPackage).dies[0], topologyObj.packages[1].(*cpuPackage).dies[0])
+	assert.ElementsMatch(t, topologyObj.packages[0].(*cpuPackage).cpus.IDs(), []uint{0, 1, 4, 5})
+	assert.ElementsMatch(t, topologyObj.packages[1].(*cpuPackage).cpus.IDs(), []uint{2, 3, 6, 7})
 	// only one die per pkg so pkg cpus == die cpus
-	assert.ElementsMatch(t, topologyObj.packages[0].dies[0].cpus, topologyObj.packages[0].cpus)
-	assert.ElementsMatch(t, topologyObj.packages[1].dies[0].cpus, topologyObj.packages[1].cpus)
+	assert.ElementsMatch(t, topologyObj.packages[0].(*cpuPackage).dies[0].(*cpuDie).cpus, topologyObj.packages[0].(*cpuPackage).cpus)
+	assert.ElementsMatch(t, topologyObj.packages[1].(*cpuPackage).dies[0].(*cpuDie).cpus, topologyObj.packages[1].(*cpuPackage).cpus)
 
 	// emulate hyperthreading enabled so 2 cpus/threads per physical core
 	// without hyperthreading we expect one thread per core
-	assert.Len(t, topologyObj.packages[0].dies[0].cores, 2)
-	assert.Len(t, topologyObj.packages[1].dies[0].cores, 2)
+	assert.Len(t, topologyObj.packages[0].(*cpuPackage).dies[0].(*cpuDie).cores, 2)
+	assert.Len(t, topologyObj.packages[1].(*cpuPackage).dies[0].(*cpuDie).cores, 2)
 
-	assert.Len(t, topologyObj.packages[0].dies[0].cpus, 4)
-	assert.Len(t, topologyObj.packages[1].dies[0].cpus, 4)
+	assert.Len(t, topologyObj.packages[0].(*cpuPackage).dies[0].(*cpuDie).cpus, 4)
+	assert.Len(t, topologyObj.packages[1].(*cpuPackage).dies[0].(*cpuDie).cpus, 4)
 
-	assert.ElementsMatch(t, topologyObj.packages[0].dies[0].cores[0].cpus.IDs(), []uint{0, 4})
-	assert.ElementsMatch(t, topologyObj.packages[0].dies[0].cores[1].cpus.IDs(), []uint{1, 5})
-	assert.ElementsMatch(t, topologyObj.packages[1].dies[0].cores[0].cpus.IDs(), []uint{2, 6})
-	assert.ElementsMatch(t, topologyObj.packages[1].dies[0].cores[1].cpus.IDs(), []uint{3, 7})
+	assert.ElementsMatch(t, topologyObj.packages[0].(*cpuPackage).dies[0].(*cpuDie).cores[0].(*cpuCore).cpus.IDs(), []uint{0, 4})
+	assert.ElementsMatch(t, topologyObj.packages[0].(*cpuPackage).dies[0].(*cpuDie).cores[1].(*cpuCore).cpus.IDs(), []uint{1, 5})
+	assert.ElementsMatch(t, topologyObj.packages[1].(*cpuPackage).dies[0].(*cpuDie).cores[0].(*cpuCore).cpus.IDs(), []uint{2, 6})
+	assert.ElementsMatch(t, topologyObj.packages[1].(*cpuPackage).dies[0].(*cpuDie).cores[1].(*cpuCore).cpus.IDs(), []uint{3, 7})
 }
 
 func (s *topologyTestSuite) TestSystemTopology_Getters() {
@@ -221,7 +383,7 @@ func (s *topologyTestSuite) TestSystemTopology_Getters() {
 		1: &cpuPackage{},
 	}
 
-	topo := &systemTopology{
+	topo := &cpuTopology{
 		packages: pkgs,
 		allCpus:  cpus,
 	}
@@ -234,7 +396,7 @@ func (s *topologyTestSuite) TestSystemTopology_Getters() {
 func (s *topologyTestSuite) TestSystemTopology_addCpu() {
 	defer setupTopologyTest(map[string]map[string]string{})()
 	// fail to read fs
-	topo := &systemTopology{
+	topo := &cpuTopology{
 		packages: packageList{},
 		allCpus:  make(CpuList, 1),
 	}
