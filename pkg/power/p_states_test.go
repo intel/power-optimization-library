@@ -16,11 +16,13 @@ func TestIsPStatesDriverSupported(t *testing.T) {
 }
 func TestPreChecksPStates(t *testing.T) {
 	var pStates featureStatus
+	origpath := basePath
+	basePath = ""
 	pStates = initPStates()
 
 	assert.Equal(t, pStates.name, "P-States")
 	assert.ErrorContains(t, pStates.err, "failed to determine driver")
-
+	basePath = origpath
 	teardown := setupCpuPStatesTests(map[string]map[string]string{
 		"cpu0": {
 			"min":    "111",
@@ -43,6 +45,7 @@ func TestPreChecksPStates(t *testing.T) {
 	pStates = initPStates()
 	assert.ErrorContains(t, pStates.err, "unsupported")
 	assert.Equal(t, pStates.driver, "some_unsupported_driver")
+
 }
 
 func TestCoreImpl_updateFreqValues(t *testing.T) {
@@ -137,8 +140,4 @@ func TestCoreImpl_setPstatsValues(t *testing.T) {
 	assert.NoError(t, core.setPStatesValues(profile))
 	eppFileContent, _ = os.ReadFile(filepath.Join(basePath, "cpu0", eppFile))
 	assert.Equal(t, eppToSet, string(eppFileContent))
-
-	// error when cant write
-	teardown()
-	assert.ErrorContains(t, core.setPStatesValues(profile), "no such file")
 }

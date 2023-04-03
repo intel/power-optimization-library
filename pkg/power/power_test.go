@@ -113,95 +113,110 @@ func TestCreateInstance(t *testing.T) {
 
 //
 //
-//func Fuzz_library(f *testing.F) {
-//	states := map[string]map[string]string{
-//		"state0":   {"name": "C0"},
-//		"state1":   {"name": "C1"},
-//		"state2":   {"name": "C2"},
-//		"state3":   {"name": "POLL"},
-//		"notState": nil,
-//	}
-//	cstatesFiles := map[string]map[string]map[string]string{
-//		"cpu0":   states,
-//		"cpu1":   states,
-//		"cpu2":   states,
-//		"cpu3":   states,
-//		"cpu4":   states,
-//		"cpu5":   states,
-//		"cpu6":   states,
-//		"cpu7":   states,
-//		"Driver": {"intel_idle\n": nil},
-//	}
-//
-//	cpuFreqs := map[string]string{
-//		"max": "123",
-//		"min": "100",
-//		"epp": "some",
-//	}
-//	cpuFreqsFiles := map[string]map[string]string{
-//		"cpu0": cpuFreqs,
-//		"cpu1": cpuFreqs,
-//		"cpu2": cpuFreqs,
-//		"cpu3": cpuFreqs,
-//		"cpu4": cpuFreqs,
-//		"cpu5": cpuFreqs,
-//		"cpu6": cpuFreqs,
-//		"cpu7": cpuFreqs,
-//	}
-//	setupCpuPStatesTests(cpuFreqsFiles)
-//	setupCoreCStatesTests(cstatesFiles)
-//
-//	governorList := []string{"powersave", "performance"}
-//	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
-//
-//	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
-//		basePath = "testing/cores"
-//		getNumberOfCpus = func() int { return 8 }
-//
-//		if nodeName == "" {
-//			return
-//		}
-//		node, err := CreateInstance(nodeName)
-//
-//		if err != nil || node == nil {
-//			t.Fatal("node failed to init", err)
-//		}
-//
-//		err = node.SetReservedPoolCores([]int{0})
-//		if err != nil {
-//			t.Error(err)
-//		}
-//		governor := governorList[int(governorSeed)%len(governorList)]
-//		epp := eppList[int(eppSeed)%len(eppList)]
-//		profile, err := node.AddProfile(poolName, int(value1), int(value2), governor, epp)
-//
-//		if err != nil {
-//			return
-//		}
-//		switch profile.(type) {
-//		default:
-//			t.Error("profile is null")
-//		case Profile:
-//		}
-//
-//		if epp == "power" {
-//			return
-//		}
-//
-//		err = node.AddCoresToExclusivePool(poolName, []int{1, 3, 5})
-//		if err != nil {
-//			t.Error(err)
-//		}
-//
-//		err = node.RemoveCoresFromExclusivePool(poolName, []int{3})
-//		if err != nil {
-//			t.Error(err)
-//		}
-//
-//		err = node.GetExclusivePool(poolName).SetPowerProfile(nil)
-//		if err != nil {
-//			t.Error(err)
-//		}
-//	}
-//	f.Fuzz(fuzzTarget)
-//}
+func Fuzz_library(f *testing.F) {
+	states := map[string]map[string]string{
+		"state0":   {"name": "C0"},
+		"state1":   {"name": "C1"},
+		"state2":   {"name": "C2"},
+		"state3":   {"name": "POLL"},
+		"notState": nil,
+	}
+	cstatesFiles := map[string]map[string]map[string]string{
+		"cpu0":   states,
+		"cpu1":   states,
+		"cpu2":   states,
+		"cpu3":   states,
+		"cpu4":   states,
+		"cpu5":   states,
+		"cpu6":   states,
+		"cpu7":   states,
+		"Driver": {"intel_idle\n": nil},
+	}
+	uncoreFreqs := map[string]string{
+		"initMax": "200",
+		"initMin": "100",
+		"max": "123",
+		"min": "100",
+	}
+	uncoreFiles:= map[string]map[string]string{
+		"package_00_die_00": uncoreFreqs,
+		"package_01_die_00": uncoreFreqs,
+	}
+	cpuFreqs := map[string]string{
+		"max": "123",
+		"min": "100",
+		"epp": "some",
+	}
+	cpuFreqsFiles := map[string]map[string]string{
+		"cpu0": cpuFreqs,
+		"cpu1": cpuFreqs,
+		"cpu2": cpuFreqs,
+		"cpu3": cpuFreqs,
+		"cpu4": cpuFreqs,
+		"cpu5": cpuFreqs,
+		"cpu6": cpuFreqs,
+		"cpu7": cpuFreqs,
+	}
+	teardownCpu := setupCpuPStatesTests(cpuFreqsFiles)
+	teardownCstates := setupCpuCStatesTests(cstatesFiles)
+	teardownUncore := setupUncoreTests(uncoreFiles,"intel_uncore_frequency 16384 0 - Live 0xffffffffc09c8000")
+	defer teardownCpu()
+	defer teardownCstates()
+	defer teardownUncore()
+	governorList := []string{"powersave", "performance"}
+	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
+
+	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
+		basePath = "testing/cores"
+		getNumberOfCpus = func() uint { return 8 }
+
+		if nodeName == "" {
+			return
+		}
+		node, err := CreateInstance(nodeName)
+
+		if err != nil || node == nil {
+			t.Fatal("node failed to init", err)
+		}
+		err = node.GetReservedPool().MoveCpuIDs([]uint{0})
+		if err != nil {
+			t.Error(err)
+		}
+		governor := governorList[int(governorSeed)%len(governorList)]
+		epp := eppList[int(eppSeed)%len(eppList)]
+		pool,err:=node.AddExclusivePool(poolName)
+		if err != nil {
+			return
+		}
+		profile, err := NewPowerProfile(poolName, value1, value2, governor, epp)
+		pool.SetPowerProfile(profile)
+		if err != nil {
+			return
+		}
+		switch profile.(type) {
+		default:
+			t.Error("profile is null")
+		case Profile:
+		}
+
+		if epp == "power" {
+			return
+		}
+		
+		err = node.GetExclusivePool(poolName).MoveCpuIDs([]uint{1,3,5})
+		if err != nil {
+			t.Error(err)
+		}
+		err =node.GetSharedPool().MoveCpuIDs([]uint{3})
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = node.GetExclusivePool(poolName).SetPowerProfile(nil)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+	f.Fuzz(fuzzTarget)
+
+}
