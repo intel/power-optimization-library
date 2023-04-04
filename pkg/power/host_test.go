@@ -256,7 +256,7 @@ func (s *hostTestsSuite) TestRemoveCoreFromExclusivePool() {
 		core._setPoolProperty(host.exclusivePools[0])
 	}
 
-	host.sharedPool = &poolImpl{PowerProfile: &profileImpl{}, host: host}
+	host.sharedPool = &sharedPoolType{poolImpl{PowerProfile: &profileImpl{}, host: host}}
 
 	coresToRemove := make(CpuList, 2)
 	copy(coresToRemove, cores[0:2])
@@ -274,12 +274,12 @@ func (s *hostTestsSuite) TestAddCoresToExclusivePool() {
 	host := &hostImpl{
 		topology: topology,
 	}
-	host.exclusivePools = []Pool{&poolImpl{
+	host.exclusivePools = []Pool{&exclusivePoolType{poolImpl{
 		name:         "test",
 		cpus:         make([]Cpu, 0),
 		PowerProfile: &profileImpl{},
 		host:         host,
-	}}
+	}}}
 	host.name = "test_node"
 	cores := make(CpuList, 4)
 	for i := range cores {

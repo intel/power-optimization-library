@@ -56,20 +56,11 @@ func (pool *poolImpl) SetCpus(CpuList) error {
 } //virtual
 
 func (pool *poolImpl) MoveCpus(cpus CpuList) error {
-	for _, cpu := range cpus {
-		if err := cpu.SetPool(pool); err != nil {
-			return err
-		}
-	}
-	return nil
+	panic("virtual")
 }
 
 func (pool *poolImpl) MoveCpuIDs(cpuIDs []uint) error {
-	cpus, err := pool.host.GetAllCpus().ManyByIDs(cpuIDs)
-	if err != nil {
-		return err
-	}
-	return pool.MoveCpus(cpus)
+	panic("virtual")
 }
 
 func (pool *poolImpl) Remove() error {
@@ -107,6 +98,21 @@ type sharedPoolType struct {
 	poolImpl
 }
 
+func (sharedPool *sharedPoolType) MoveCpuIDs(cpuIDs []uint) error {
+	cpus, err := sharedPool.host.GetAllCpus().ManyByIDs(cpuIDs)
+	if err != nil {
+		return err
+	}
+	return sharedPool.MoveCpus(cpus)
+}
+func (sharedPool *sharedPoolType) MoveCpus(cpus CpuList) error {
+	for _, cpu := range cpus {
+		if err := cpu.SetPool(sharedPool); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (sharedPool *sharedPoolType) SetCpuIDs(cpuIDs []uint) error {
 	cores, err := sharedPool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
@@ -147,6 +153,21 @@ type reservedPoolType struct {
 	poolImpl
 }
 
+func (reservedPool *reservedPoolType) MoveCpuIDs(cpuIDs []uint) error {
+	cpus, err := reservedPool.host.GetAllCpus().ManyByIDs(cpuIDs)
+	if err != nil {
+		return err
+	}
+	return reservedPool.MoveCpus(cpus)
+}
+func (reservedPool *reservedPoolType) MoveCpus(cpus CpuList) error {
+	for _, cpu := range cpus {
+		if err := cpu.SetPool(reservedPool); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (reservedPool *reservedPoolType) SetCpuIDs(cpuIDs []uint) error {
 	cpus, err := reservedPool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
@@ -206,6 +227,21 @@ type exclusivePoolType struct {
 	poolImpl
 }
 
+func (pool *exclusivePoolType) MoveCpuIDs(cpuIDs []uint) error {
+	cpus, err := pool.host.GetAllCpus().ManyByIDs(cpuIDs)
+	if err != nil {
+		return err
+	}
+	return pool.MoveCpus(cpus)
+}
+func (pool *exclusivePoolType) MoveCpus(cpus CpuList) error {
+	for _, cpu := range cpus {
+		if err := cpu.SetPool(pool); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (pool *exclusivePoolType) SetCpuIDs(cpuIDs []uint) error {
 	cpus, err := pool.host.GetAllCpus().ManyByIDs(cpuIDs)
 	if err != nil {
