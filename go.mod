@@ -1,9 +1,9 @@
 module github.com/intel/power-optimization-library
 
-go 1.19
+go 1.20
 
 require (
-	github.com/go-logr/logr v1.2.3
+	github.com/go-logr/logr v1.2.4
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/stretchr/testify v1.8.2
 )
