@@ -2,8 +2,10 @@ package power
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFeatureSet_init(t *testing.T) {
@@ -146,6 +148,9 @@ func Fuzz_library(f *testing.F) {
 		"max": "123",
 		"min": "100",
 		"epp": "some",
+		"driver": "intel_pstate",
+		"package": "0",
+		"die": "0",
 	}
 	cpuFreqsFiles := map[string]map[string]string{
 		"cpu0": cpuFreqs,
@@ -165,12 +170,17 @@ func Fuzz_library(f *testing.F) {
 	defer teardownUncore()
 	governorList := []string{"powersave", "performance"}
 	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
-
+	//f.Add("node1","performance",uint(250000),uint(120000),uint(5),uint(10))
 	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
-		basePath = "testing/cores"
+		basePath = "testing/cpus"
 		getNumberOfCpus = func() uint { return 8 }
-
-		if nodeName == "" {
+		nodeName = strings.ReplaceAll(nodeName, " ", "")
+		nodeName = strings.ReplaceAll(nodeName, "\t", "")
+		nodeName = strings.ReplaceAll(nodeName, "\000", "")
+		poolName = strings.ReplaceAll(poolName, " ", "")
+		poolName = strings.ReplaceAll(poolName, "\t", "")
+		poolName = strings.ReplaceAll(poolName, "\000", "")
+		if nodeName == "" || poolName == ""{
 			return
 		}
 		node, err := CreateInstance(nodeName)
@@ -180,7 +190,7 @@ func Fuzz_library(f *testing.F) {
 		}
 		err = node.GetReservedPool().MoveCpuIDs([]uint{0})
 		if err != nil {
-			t.Error(err)
+			t.Error("could not move core to reserved pool",err)
 		}
 		governor := governorList[int(governorSeed)%len(governorList)]
 		epp := eppList[int(eppSeed)%len(eppList)]
@@ -205,16 +215,28 @@ func Fuzz_library(f *testing.F) {
 		
 		err = node.GetExclusivePool(poolName).MoveCpuIDs([]uint{1,3,5})
 		if err != nil {
-			t.Error(err)
+			t.Error("could not move cores to exclusive pool",err)
 		}
 		err =node.GetSharedPool().MoveCpuIDs([]uint{3})
 		if err != nil {
-			t.Error(err)
+			t.Error("could not move cores to shared pool",err)
 		}
 
 		err = node.GetExclusivePool(poolName).SetPowerProfile(nil)
 		if err != nil {
-			t.Error(err)
+			t.Error("could not set power profile on exclusive pool",err)
+		}
+		err = node.Topology().SetUncore(&uncoreFreq{max: 24000,min: 13000})
+		if err != nil {
+			t.Error("could not set topology uncore",err)
+		}
+		err = node.Topology().Package(0).SetUncore(&uncoreFreq{max: 24000,min: 12000})
+		if err != nil {
+			t.Error("could not set package uncore",err)
+		}
+		err = node.Topology().Package(0).Die(0).SetUncore(&uncoreFreq{max: 23000,min: 11000})
+		if err != nil {
+			t.Error("could not set die uncore",err)
 		}
 	}
 	f.Fuzz(fuzzTarget)

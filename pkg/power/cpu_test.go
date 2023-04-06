@@ -79,6 +79,7 @@ func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
 	for cpuName, cpuDetails := range cpufiles {
 		cpudir := filepath.Join(basePath, cpuName)
 		os.MkdirAll(filepath.Join(cpudir, "cpufreq"), os.ModePerm)
+		os.MkdirAll(filepath.Join(cpudir, "topology"), os.ModePerm)
 		for prop, value := range cpuDetails {
 			switch prop {
 			case "driver":
@@ -89,6 +90,11 @@ func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
 			case "min":
 				os.WriteFile(filepath.Join(cpudir, scalingMinFile), []byte(value+"\n"), 0644)
 				os.WriteFile(filepath.Join(cpudir, cpuMinFreqFile), []byte(value+"\n"), 0644)
+			case "package":
+				os.WriteFile(filepath.Join(cpudir,packageIdFile),[]byte(value+"\n"), 0644)
+			case "die":
+				os.WriteFile(filepath.Join(cpudir,dieIdFile),[]byte(value+"\n"), 0644)
+				os.WriteFile(filepath.Join(cpudir,coreIdFile),[]byte(cpuName[3:]+"\n"), 0644)
 			case "epp":
 				os.WriteFile(filepath.Join(cpudir, eppFile), []byte(value+"\n"), 0644)
 			case "governor":

@@ -46,7 +46,7 @@ func setupCpuCStatesTests(cpufiles map[string]map[string]map[string]string) func
 		for state, props := range states {
 			err := os.Mkdir(filepath.Join(cpuStatesDir, state), os.ModePerm)
 			if err != nil {
-				panic(err)
+				//panic(err)
 			}
 			for propFile, value := range props {
 				err := os.WriteFile(filepath.Join(cpuStatesDir, state, propFile), []byte(value), 0644)

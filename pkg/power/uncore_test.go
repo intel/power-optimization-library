@@ -21,7 +21,7 @@ func (m *mockUncore) write(pkIgD, dieID uint) error {
 
 func setupUncoreTests(files map[string]map[string]string, modulesFileContent string) func() {
 	origBasePath := basePath
-	basePath = "testing/uncore"
+	basePath = "testing/cpus"
 
 	origModulesFile := kernelModulesFilePath
 	kernelModulesFilePath = basePath + "/kernelModules"
