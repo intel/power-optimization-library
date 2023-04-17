@@ -3,6 +3,7 @@ package power
 // collection of P-States specific functions and methods
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,11 +67,17 @@ func generateDefaultProfile() error {
 	if err != nil {
 		return err
 	}
+
+	_, err = readCpuStringProperty(0, eppFile)
+	epp := defaultEpp
+	if os.IsNotExist(errors.Unwrap(err)) {
+		epp = ""
+	}
 	defaultPowerProfile = &profileImpl{
 		name:     "default",
 		max:      maxFreq,
 		min:      minFreq,
-		epp:      defaultEpp,
+		epp:      epp,
 		governor: defaultGovernor,
 	}
 	return nil

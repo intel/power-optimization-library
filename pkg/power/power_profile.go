@@ -39,7 +39,7 @@ func NewPowerProfile(name string, minFreq uint, maxFreq uint, governor string, e
 		return nil, fmt.Errorf("governor can only be set to '%s' or '%s'", cpuPolicyPerformance, cpuPolicyPowersave)
 	}
 
-	if governor == cpuPolicyPerformance && epp != cpuPolicyPerformance {
+	if epp != "" && governor == cpuPolicyPerformance && epp != cpuPolicyPerformance {
 		return nil, fmt.Errorf("only '%s' epp can be used with '%s' governor", cpuPolicyPerformance, cpuPolicyPerformance)
 	}
 

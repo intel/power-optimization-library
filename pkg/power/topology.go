@@ -72,7 +72,7 @@ func (s *cpuTopology) Packages() *[]Package {
 }
 
 func (s *cpuTopology) Package(id uint) Package {
-	pkg, _ := s.packages[id]
+	pkg := s.packages[id]
 	return pkg
 }
 
@@ -108,7 +108,7 @@ func (c *cpuPackage) Dies() *[]Die {
 }
 
 func (c *cpuPackage) Die(id uint) Die {
-	die, _ := c.dies[id]
+	die := c.dies[id]
 	return die
 }
 
@@ -174,7 +174,7 @@ func (d *cpuDie) Cores() *[]Core {
 }
 
 func (d *cpuDie) Core(id uint) Core {
-	core, _ := d.cores[id]
+	core := d.cores[id]
 	return core
 }
 

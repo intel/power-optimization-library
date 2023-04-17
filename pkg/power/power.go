@@ -63,10 +63,7 @@ func (f *featureStatus) FeatureError() error {
 }
 
 func (f *featureStatus) isSupported() bool {
-	if f.err == nil {
-		return true
-	}
-	return false
+	return f.err == nil
 }
 
 // FeatureSet stores info of about functionalities supported by the power library
