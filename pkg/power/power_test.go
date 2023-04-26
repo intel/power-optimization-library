@@ -1,73 +1,120 @@
 package power
 
 import (
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"os"
-	"path/filepath"
+	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func Test_diff(t *testing.T) {
-	all := make([]Core, 8)
-	for i := range all {
-		mck := new(coreMock)
-		mck.On("GetID").Return(i)
-		all[i] = mck
-	}
-	excluded := []Core{
-		all[1], all[3], all[5],
-	}
+func TestFeatureSet_init(t *testing.T) {
 
-	difference := diffCoreList(all, excluded)
-	assert.ElementsMatch(t, difference, []Core{all[0], all[2], all[4], all[6], all[7]})
+	assert.Error(t, (&FeatureSet{}).init())
+
+	set := FeatureSet{}
+	set[0] = &featureStatus{}
+
+	// non-existing initFunc
+	assert.Panics(t, func() { set.init() })
+
+	// no error
+	called := false
+	set[0] = &featureStatus{
+		initFunc: func() featureStatus {
+			called = true
+			return featureStatus{}
+		},
+	}
+	assert.Empty(t, set.init())
+	assert.True(t, called)
+
+	// error
+	called = false
+	set[0] = &featureStatus{
+		initFunc: func() featureStatus {
+			called = true
+			return featureStatus{err: fmt.Errorf("error")}
+		},
+	}
+	assert.Equal(t, 1, set.init().Len())
+	assert.True(t, called)
+}
+
+func TestFeatureSet_anySupported(t *testing.T) {
+	// empty set - nothing supported
+	set := FeatureSet{}
+	assert.False(t, set.anySupported())
+
+	// something supported
+	set[0] = &featureStatus{err: nil}
+	assert.True(t, set.anySupported())
+
+	//nothing supported
+	set[0] = &featureStatus{err: fmt.Errorf("")}
+	set[4] = &featureStatus{err: fmt.Errorf("")}
+	set[2] = &featureStatus{err: fmt.Errorf("")}
+	assert.False(t, set.anySupported())
+}
+
+func TestFeatureSet_isFeatureIdSupported(t *testing.T) {
+	// non existing
+	set := FeatureSet{}
+	assert.False(t, set.isFeatureIdSupported(0))
+
+	// error
+	set[0] = &featureStatus{err: fmt.Errorf("")}
+	assert.False(t, set.isFeatureIdSupported(0))
+
+	// no error
+	set[0] = &featureStatus{err: nil}
+	assert.True(t, set.isFeatureIdSupported(0))
+}
+
+func TestFeatureSet_getFeatureIdError(t *testing.T) {
+	// non existing
+	set := FeatureSet{}
+	assert.ErrorIs(t, undefinedErr, set.getFeatureIdError(0))
+
+	// error
+	set[0] = &featureStatus{err: fmt.Errorf("")}
+	assert.Error(t, set.getFeatureIdError(0))
+
+	// no error
+	set[0] = &featureStatus{err: nil}
+	assert.NoError(t, set.getFeatureIdError(0))
+}
+
+func TestInitialFeatureList(t *testing.T) {
+	assert.False(t, featureList.anySupported())
+
+	for id, _ := range featureList {
+		assert.ErrorIs(t, featureList.getFeatureIdError(id), uninitialisedErr)
+	}
 }
 
 func TestCreateInstance(t *testing.T) {
-	nodeName := "node1"
-	mockCpuData := map[string]string{
-		"min": "100",
-		"max": "123",
-		"epp": "epp",
-	}
-	mockedCores := map[string]map[string]string{
-		"cpu0": mockCpuData,
-		"cpu1": mockCpuData,
-		"cpu2": mockCpuData,
-		"cpu3": mockCpuData,
-	}
-	defer setupCoreTests(mockedCores)()
+	origFeatureList := featureList
+	featureList = FeatureSet{}
 
-	node, err := CreateInstance(nodeName)
-	var cStatesSupportError *CStatesSupportError
-	assert.ErrorAs(t, err, &cStatesSupportError)
+	defer func() { featureList = origFeatureList }()
 
-	assert.Equal(t, nodeName, node.GetName())
-	assert.Len(t, node.(*nodeImpl).SharedPool.(*poolImpl).Cores, len(mockedCores))
-	assert.Equal(t, sharedPoolName, node.(*nodeImpl).SharedPool.(*poolImpl).Name)
-
-	assert.Empty(t, node.(*nodeImpl).ExclusivePools)
-}
-
-func TestPreChecks(t *testing.T) {
-	defer setupCoreTests(map[string]map[string]string{
-		"cpu0": {},
-	})()
-	_, err := preChecks()
-	var cStateErr *CStatesSupportError
-	assert.ErrorAs(t, err, &cStateErr)
-
-	var sstBfErr *PStatesSupportError
-	if errors.As(err, &sstBfErr) {
-		assert.False(t, true, "unexpected Error type", err)
-	}
-
-	os.WriteFile(filepath.Join(basePath, "cpu0", scalingDrvFile), []byte("not intel\n"), 0664)
-
-	_, err = preChecks()
+	const machineName = "host1"
+	host, err := CreateInstance(machineName)
+	assert.Nil(t, host)
 	assert.Error(t, err)
+
+	featureList[4] = &featureStatus{initFunc: func() featureStatus { return featureStatus{} }}
+	host, err = CreateInstance(machineName)
+	assert.NoError(t, err)
+	assert.NotNil(t, host)
+
+	hostObj := host.(*hostImpl)
+	assert.Equal(t, machineName, hostObj.name)
 }
 
+//
+//
 func Fuzz_library(f *testing.F) {
 	states := map[string]map[string]string{
 		"state0":   {"name": "C0"},
@@ -87,11 +134,23 @@ func Fuzz_library(f *testing.F) {
 		"cpu7":   states,
 		"Driver": {"intel_idle\n": nil},
 	}
-
+	uncoreFreqs := map[string]string{
+		"initMax": "200",
+		"initMin": "100",
+		"max": "123",
+		"min": "100",
+	}
+	uncoreFiles:= map[string]map[string]string{
+		"package_00_die_00": uncoreFreqs,
+		"package_01_die_00": uncoreFreqs,
+	}
 	cpuFreqs := map[string]string{
 		"max": "123",
 		"min": "100",
 		"epp": "some",
+		"driver": "intel_pstate",
+		"package": "0",
+		"die": "0",
 	}
 	cpuFreqsFiles := map[string]map[string]string{
 		"cpu0": cpuFreqs,
@@ -103,17 +162,25 @@ func Fuzz_library(f *testing.F) {
 		"cpu6": cpuFreqs,
 		"cpu7": cpuFreqs,
 	}
-	setupCoreTests(cpuFreqsFiles)
-	setupCoreCStatesTests(cstatesFiles)
-
+	teardownCpu := setupCpuPStatesTests(cpuFreqsFiles)
+	teardownCstates := setupCpuCStatesTests(cstatesFiles)
+	teardownUncore := setupUncoreTests(uncoreFiles,"intel_uncore_frequency 16384 0 - Live 0xffffffffc09c8000")
+	defer teardownCpu()
+	defer teardownCstates()
+	defer teardownUncore()
 	governorList := []string{"powersave", "performance"}
 	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
-
+	//f.Add("node1","performance",uint(250000),uint(120000),uint(5),uint(10))
 	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
-		basePath = "testing/cores"
-		getNumberOfCpus = func() int { return 8 }
-
-		if nodeName == "" {
+		basePath = "testing/cpus"
+		getNumberOfCpus = func() uint { return 8 }
+		nodeName = strings.ReplaceAll(nodeName, " ", "")
+		nodeName = strings.ReplaceAll(nodeName, "\t", "")
+		nodeName = strings.ReplaceAll(nodeName, "\000", "")
+		poolName = strings.ReplaceAll(poolName, " ", "")
+		poolName = strings.ReplaceAll(poolName, "\t", "")
+		poolName = strings.ReplaceAll(poolName, "\000", "")
+		if nodeName == "" || poolName == ""{
 			return
 		}
 		node, err := CreateInstance(nodeName)
@@ -121,15 +188,18 @@ func Fuzz_library(f *testing.F) {
 		if err != nil || node == nil {
 			t.Fatal("node failed to init", err)
 		}
-
-		err = node.AddSharedPool([]int{0}, nil)
+		err = node.GetReservedPool().MoveCpuIDs([]uint{0})
 		if err != nil {
-			t.Error(err)
+			t.Error("could not move core to reserved pool",err)
 		}
 		governor := governorList[int(governorSeed)%len(governorList)]
 		epp := eppList[int(eppSeed)%len(eppList)]
-		profile, err := node.AddProfile(poolName, int(value1), int(value2), governor, epp)
-
+		pool,err:=node.AddExclusivePool(poolName)
+		if err != nil {
+			return
+		}
+		profile, err := NewPowerProfile(poolName, value1, value2, governor, epp)
+		pool.SetPowerProfile(profile)
 		if err != nil {
 			return
 		}
@@ -142,21 +212,33 @@ func Fuzz_library(f *testing.F) {
 		if epp == "power" {
 			return
 		}
-
-		err = node.AddCoresToExclusivePool(poolName, []int{1, 3, 5})
+		
+		err = node.GetExclusivePool(poolName).MoveCpuIDs([]uint{1,3,5})
 		if err != nil {
-			t.Error(err)
+			t.Error("could not move cores to exclusive pool",err)
 		}
-
-		err = node.RemoveCoresFromExclusivePool(poolName, []int{3})
+		err =node.GetSharedPool().MoveCpuIDs([]uint{3})
 		if err != nil {
-			t.Error(err)
+			t.Error("could not move cores to shared pool",err)
 		}
 
 		err = node.GetExclusivePool(poolName).SetPowerProfile(nil)
 		if err != nil {
-			t.Error(err)
+			t.Error("could not set power profile on exclusive pool",err)
+		}
+		err = node.Topology().SetUncore(&uncoreFreq{max: 24000,min: 13000})
+		if err != nil {
+			t.Error("could not set topology uncore",err)
+		}
+		err = node.Topology().Package(0).SetUncore(&uncoreFreq{max: 24000,min: 12000})
+		if err != nil {
+			t.Error("could not set package uncore",err)
+		}
+		err = node.Topology().Package(0).Die(0).SetUncore(&uncoreFreq{max: 23000,min: 11000})
+		if err != nil {
+			t.Error("could not set die uncore",err)
 		}
 	}
 	f.Fuzz(fuzzTarget)
+
 }
