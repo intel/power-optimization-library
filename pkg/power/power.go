@@ -2,14 +2,12 @@ package power
 
 import (
 	"fmt"
+	"github.com/go-logr/logr"
+	"github.com/hashicorp/go-multierror"
 	"os"
-	"path"
 	"runtime"
 	"strconv"
 	"strings"
-
-	"github.com/go-logr/logr"
-	"github.com/hashicorp/go-multierror"
 )
 
 var basePath = "/sys/devices/system/cpu"
@@ -135,32 +133,7 @@ func CreateInstance(hostName string) (Host, error) {
 
 // getNumberOfCpus defined as var so can be mocked by the unit test
 var getNumberOfCpus = func() uint {
-	// First, try to get CPUs from sysfs. If the sysfs isn't available
-	// return Number of CPUs from runtime
-	cpusAvailable, err := readStringFromFile(path.Join(basePath, "online"))
-	if err != nil {
-		return uint(runtime.NumCPU())
-	}
-
-	// Delete \n character and split the string to get
-	// first and last element
-	cpusAvailable = strings.Replace(cpusAvailable, "\n", "", -1)
-	cpuSlice := strings.Split(cpusAvailable, "-")
-	if len(cpuSlice) < 2 {
-		return uint(runtime.NumCPU())
-	}
-
-	// Calculate number of CPUs, if an error occurs
-	// return the number of CPUs from runtime
-	firstElement, err := strconv.Atoi(cpuSlice[0])
-	if err != nil {
-		return uint(runtime.NumCPU())
-	}
-	secondElement, err := strconv.Atoi(cpuSlice[1])
-	if err != nil {
-		return uint(runtime.NumCPU())
-	}
-	return uint((secondElement - firstElement) + 1)
+	return uint(runtime.NumCPU())
 }
 
 // reads a file from a path, parses contents as an int a returns the value
