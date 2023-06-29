@@ -82,7 +82,7 @@ func mapAvailableCStates() error {
 		cStatesNamesMap[stateName] = stateNumber
 		defaultCStates[stateName] = true
 	}
-	log.V(3).Info("mapped C-states","map", cStatesNamesMap)
+	log.V(3).Info("mapped C-states", "map", cStatesNamesMap)
 	return nil
 }
 

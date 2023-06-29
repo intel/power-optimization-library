@@ -2,49 +2,71 @@ package power
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestIsPStatesDriverSupported(t *testing.T) {
-	assert.False(t, isPStatesDriverSupported("something"))
-	assert.True(t, isPStatesDriverSupported("intel_pstate"))
-	assert.True(t, isPStatesDriverSupported("intel_cpufreq"))
+func TestIsScalingDriverSupported(t *testing.T) {
+	assert.False(t, isScalingDriverSupported("something"))
+	assert.True(t, isScalingDriverSupported("intel_pstate"))
+	assert.True(t, isScalingDriverSupported("intel_cpufreq"))
+	assert.True(t, isScalingDriverSupported("acpi-cpufreq"))
 }
-func TestPreChecksPStates(t *testing.T) {
+func TestPreChecksScalingDriver(t *testing.T) {
 	var pStates featureStatus
 	origpath := basePath
 	basePath = ""
-	pStates = initPStates()
+	pStates = initScalingDriver()
 
-	assert.Equal(t, pStates.name, "P-States")
+	assert.Equal(t, pStates.name, "Frequency-Scaling")
 	assert.ErrorContains(t, pStates.err, "failed to determine driver")
+	epp := initEpp()
+	assert.Equal(t, epp.name, "Energy-Performance-Preference")
+	assert.ErrorContains(t, epp.err, "EPP file cpufreq/energy_performance_preference does not exist")
 	basePath = origpath
-	teardown := setupCpuPStatesTests(map[string]map[string]string{
+	teardown := setupCpuScalingTests(map[string]map[string]string{
 		"cpu0": {
-			"min":    "111",
-			"max":    "999",
-			"driver": "intel_pstate",
+			"min":                 "111",
+			"max":                 "999",
+			"driver":              "intel_pstate",
+			"available_governors": "performance",
+			"epp":                 "performance",
 		},
 	})
 
-	pStates = initPStates()
+	pStates = initScalingDriver()
 	assert.Equal(t, "intel_pstate", pStates.driver)
 	assert.NoError(t, pStates.err)
+	epp = initEpp()
+	assert.NoError(t, epp.err)
 
 	teardown()
-	defer setupCpuPStatesTests(map[string]map[string]string{
+	defer setupCpuScalingTests(map[string]map[string]string{
 		"cpu0": {
 			"driver": "some_unsupported_driver",
 		},
 	})()
 
-	pStates = initPStates()
+	pStates = initScalingDriver()
 	assert.ErrorContains(t, pStates.err, "unsupported")
 	assert.Equal(t, pStates.driver, "some_unsupported_driver")
+	teardown()
+	defer setupCpuScalingTests(map[string]map[string]string{
+		"cpu0": {
+			"driver": "acpi-cpufreq",
+			"available_governors": "powersave",
+			"max": "3700",
+			"min": "3200",
+		},
+	})()
+	acpi := initScalingDriver()
+	assert.Equal(t, "acpi-cpufreq", acpi.driver)
+	assert.NoError(t, acpi.err)
+
 
 }
 
@@ -59,7 +81,7 @@ func TestCoreImpl_updateFreqValues(t *testing.T) {
 	// p-states not supported
 	assert.NoError(t, core.updateFrequencies())
 
-	teardown := setupCpuPStatesTests(map[string]map[string]string{
+	teardown := setupCpuScalingTests(map[string]map[string]string{
 		"cpu0": {
 			"max": fmt.Sprint(maxDefault),
 		},
@@ -98,11 +120,13 @@ func TestCoreImpl_setPstatsValues(t *testing.T) {
 		governorToSet = "powersave"
 		eppToSet      = "testEpp"
 	)
+	featureList[EPPFeature].err = nil
+	defer func() { featureList[EPPFeature].err = uninitialisedErr }()
 	core := &cpuImpl{
 		id: 0,
 	}
 
-	teardown := setupCpuPStatesTests(map[string]map[string]string{
+	teardown := setupCpuScalingTests(map[string]map[string]string{
 		"cpu0": {
 			"governor": "performance",
 			"max":      "9999",
@@ -119,7 +143,7 @@ func TestCoreImpl_setPstatsValues(t *testing.T) {
 		epp:      eppToSet,
 		governor: governorToSet,
 	}
-	assert.NoError(t, core.setPStatesValues(profile))
+	assert.NoError(t, core.setDriverValues(profile))
 
 	governorFileContent, _ := os.ReadFile(filepath.Join(basePath, "cpu0", scalingGovFile))
 	assert.Equal(t, governorToSet, string(governorFileContent))
@@ -137,7 +161,7 @@ func TestCoreImpl_setPstatsValues(t *testing.T) {
 
 	// check for empty epp unset
 	profile.epp = ""
-	assert.NoError(t, core.setPStatesValues(profile))
+	assert.NoError(t, core.setDriverValues(profile))
 	eppFileContent, _ = os.ReadFile(filepath.Join(basePath, "cpu0", eppFile))
 	assert.Equal(t, eppToSet, string(eppFileContent))
 }

@@ -2,11 +2,12 @@ package power
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func setupCpuCStatesTests(cpufiles map[string]map[string]map[string]string) func() {
