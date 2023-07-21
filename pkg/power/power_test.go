@@ -147,6 +147,7 @@ func Fuzz_library(f *testing.F) {
 		"min":     "100",
 		"epp":     "some",
 		"driver":  "intel_pstate",
+		"available_governors": "conservative ondemand userspace powersave",
 		"package": "0",
 		"die":     "0",
 	}
@@ -168,7 +169,7 @@ func Fuzz_library(f *testing.F) {
 	defer teardownUncore()
 	governorList := []string{"powersave", "performance"}
 	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
-	//f.Add("node1","performance",uint(250000),uint(120000),uint(5),uint(10))
+	f.Add("node1","performance",uint(250000),uint(120000),uint(5),uint(10))
 	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
 		basePath = "testing/cpus"
 		getNumberOfCpus = func() uint { return 8 }
@@ -201,6 +202,15 @@ func Fuzz_library(f *testing.F) {
 		if err != nil {
 			return
 		}
+		err = pool.SetCStates(CStates{"C0": true, "C1": false})
+		if err != nil {
+			t.Error("could not set ctates", err)
+		}
+		states := pool.getCStates()
+		err = node.ValidateCStates(*states)
+		if err != nil {
+			t.Error("invalid cstates detected", err)
+		}
 		switch profile.(type) {
 		default:
 			t.Error("profile is null")
@@ -210,7 +220,10 @@ func Fuzz_library(f *testing.F) {
 		if epp == "power" {
 			return
 		}
-
+		err = node.GetSharedPool().MoveCpuIDs([]uint{1, 3, 5})
+		if err != nil {
+			t.Error("could not move cores to shared pool", err)
+		}
 		err = node.GetExclusivePool(poolName).MoveCpuIDs([]uint{1, 3, 5})
 		if err != nil {
 			t.Error("could not move cores to exclusive pool", err)
@@ -236,6 +249,7 @@ func Fuzz_library(f *testing.F) {
 		if err != nil {
 			t.Error("could not set die uncore", err)
 		}
+		
 	}
 	f.Fuzz(fuzzTarget)
 
