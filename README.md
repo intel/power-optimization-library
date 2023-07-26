@@ -23,8 +23,7 @@ This library is currently used as part of the
 # Prerequisites
 
 - Linux based OS
-- P-States
-    - ``intel_pstates`` enabled - no entries in kernel cmdline disabling it
+- P-States or acpi-cpufreq scaling driver enabled
 - C-States
     - ``intel_cstates`` kernel module loaded
 - Uncore frequency
@@ -128,7 +127,7 @@ err := perofmancePool.Remove()
 
 All CPUs in the removed pool will be moved back to the Shared Pool.
 
-### P-States
+### Profiles
 
 Power profiles can be associated with any Exclusive Pool or the Shared Pool
 
