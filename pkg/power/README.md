@@ -202,9 +202,9 @@ C6      Deep Power Down
   borders of scaling_min_freq and scaling_max_freq.
 
 ### acpi-cpufreq
-  The acpi-cpufreq driver operates much like the P-state driver but has a number of both static and dynamic governors. For more information see [here](https://www.kernel.org/doc/html/v4.12/admin-guide/pm/cpufreq.html).
+  The acpi-cpufreq driver setting operates much like the P-state driver but has a different set of available governors. For more information see [here](https://www.kernel.org/doc/html/v4.12/admin-guide/pm/cpufreq.html).
   One thing to note is that acpi-cpufreq reports the base clock as the frequency hardware limits however the P-state driver uses turbo frequency limits. 
-  Both drivers can make use of turbo frequency however acpi-cpufreq will exceed its hardware frequency limits when using turbo frequency. This is important to take into account when setting frequencies for profiles.
+  Both drivers can make use of turbo frequency; however, acpi-cpufreq can exceed hardware frequency limits when using turbo frequency. This is important to take into account when setting frequencies for profiles.
 ## Topology
 
 Topology discovery is done via reading /sys/devices/system/cpuN/topology/{physical_package_id,die_id,core_id}. Based on

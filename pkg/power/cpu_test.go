@@ -112,7 +112,7 @@ func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 		basePath = origBasePath
 		// revert get number of system cpus function
 		getNumberOfCpus = origGetNumOfCpusFunc
-		// revert p-states feature to un initialised state
+		// revert scaling driver feature to un initialised state
 		featureList[FreqencyScalingFeature].err = uninitialisedErr
 		// revert default powerProfile
 		defaultPowerProfile = defaultDefaultPowerProfile
@@ -142,7 +142,7 @@ func TestNewCore(t *testing.T) {
 		core: core,
 	}, cpu)
 
-	// now "break" P-States by setting a feature error
+	// now "break" scaling driver by setting a feature error
 	featureList[FreqencyScalingFeature].err = fmt.Errorf("some error")
 
 	cpu, err = newCpu(0, nil)

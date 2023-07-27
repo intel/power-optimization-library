@@ -23,7 +23,7 @@ This library is currently used as part of the
 # Prerequisites
 
 - Linux based OS
-- P-States or acpi-cpufreq scaling driver enabled
+- P-State or acpi-cpufreq scaling driver enabled
 - C-States
     - ``intel_cstates`` kernel module loaded
 - Uncore frequency

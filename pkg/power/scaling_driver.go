@@ -129,7 +129,7 @@ func (cpu *cpuImpl) updateFrequencies() error {
 	return cpu.setDriverValues(defaultPowerProfile)
 }
 
-// setPStatesValues is an entrypoint to P-States feature consolidation
+// setDriverValues is an entrypoint to power governor feature consolidation
 func (cpu *cpuImpl) setDriverValues(powerProfile Profile) error {
 	if err := cpu.writeGovernorValue(powerProfile.Governor()); err != nil {
 		return fmt.Errorf("failed to set governor for cpu %d: %w", cpu.id, err)
