@@ -2,14 +2,15 @@ package power
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 type cpuMock struct {
@@ -45,7 +46,7 @@ func (m *cpuMock) SetPool(pool Pool) error {
 	return m.Called(pool).Error(0)
 }
 
-func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
+func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 	origBasePath := basePath
 	basePath = "testing/cpus"
 	defaultDefaultPowerProfile := defaultPowerProfile
@@ -56,7 +57,7 @@ func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
 	getNumberOfCpus = func() uint { return uint(len(cpufiles)) }
 
 	// "initialise" P-States feature
-	featureList[PStatesFeature].err = nil
+	featureList[FreqencyScalingFeature].err = nil
 
 	// if cpu0 is here we set its values to temporary defaultPowerProfile
 	if cpu0, ok := cpufiles["cpu0"]; ok {
@@ -91,14 +92,16 @@ func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
 				os.WriteFile(filepath.Join(cpudir, scalingMinFile), []byte(value+"\n"), 0644)
 				os.WriteFile(filepath.Join(cpudir, cpuMinFreqFile), []byte(value+"\n"), 0644)
 			case "package":
-				os.WriteFile(filepath.Join(cpudir,packageIdFile),[]byte(value+"\n"), 0644)
+				os.WriteFile(filepath.Join(cpudir, packageIdFile), []byte(value+"\n"), 0644)
 			case "die":
-				os.WriteFile(filepath.Join(cpudir,dieIdFile),[]byte(value+"\n"), 0644)
-				os.WriteFile(filepath.Join(cpudir,coreIdFile),[]byte(cpuName[3:]+"\n"), 0644)
+				os.WriteFile(filepath.Join(cpudir, dieIdFile), []byte(value+"\n"), 0644)
+				os.WriteFile(filepath.Join(cpudir, coreIdFile), []byte(cpuName[3:]+"\n"), 0644)
 			case "epp":
 				os.WriteFile(filepath.Join(cpudir, eppFile), []byte(value+"\n"), 0644)
 			case "governor":
 				os.WriteFile(filepath.Join(cpudir, scalingGovFile), []byte(value+"\n"), 0644)
+			case "available_governors":
+				os.WriteFile(filepath.Join(cpudir, availGovFile), []byte(value+"\n"), 0644)
 			}
 		}
 	}
@@ -109,8 +112,8 @@ func setupCpuPStatesTests(cpufiles map[string]map[string]string) func() {
 		basePath = origBasePath
 		// revert get number of system cpus function
 		getNumberOfCpus = origGetNumOfCpusFunc
-		// revert p-states feature to un initialised state
-		featureList[PStatesFeature].err = uninitialisedErr
+		// revert scaling driver feature to un initialised state
+		featureList[FreqencyScalingFeature].err = uninitialisedErr
 		// revert default powerProfile
 		defaultPowerProfile = defaultDefaultPowerProfile
 	}
@@ -124,7 +127,7 @@ func TestNewCore(t *testing.T) {
 			"epp": "some",
 		},
 	}
-	defer setupCpuPStatesTests(cpufiles)()
+	defer setupCpuScalingTests(cpufiles)()
 
 	// happy path - ensure values from files are read correctly
 	core := &cpuCore{}
@@ -139,8 +142,8 @@ func TestNewCore(t *testing.T) {
 		core: core,
 	}, cpu)
 
-	// now "break" P-States by setting a feature error
-	featureList[PStatesFeature].err = fmt.Errorf("some error")
+	// now "break" scaling driver by setting a feature error
+	featureList[FreqencyScalingFeature].err = fmt.Errorf("some error")
 
 	cpu, err = newCpu(0, nil)
 

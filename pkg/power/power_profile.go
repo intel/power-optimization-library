@@ -13,8 +13,7 @@ type profileImpl struct {
 	// todo classification
 }
 
-// Profile is a P-states power profile
-// requires P-states feature
+// Profile contains scaling driver information
 type Profile interface {
 	Name() string
 	Epp() string
@@ -23,22 +22,26 @@ type Profile interface {
 	Governor() string
 }
 
+var availableGovs []string
+
 // todo add simple constructor that determines frequencies automagically?
 
-// NewPowerProfile creates a power P-States power profile,
+// NewPowerProfile creates a power profile,
 func NewPowerProfile(name string, minFreq uint, maxFreq uint, governor string, epp string) (Profile, error) {
-	if !featureList.isFeatureIdSupported(PStatesFeature) {
-		return nil, featureList.getFeatureIdError(PStatesFeature)
+	if !featureList.isFeatureIdSupported(FreqencyScalingFeature) {
+		return nil, featureList.getFeatureIdError(FreqencyScalingFeature)
 	}
 
 	if minFreq > maxFreq {
 		return nil, fmt.Errorf("max Freq can't be lower than min")
 	}
-
-	if governor != cpuPolicyPerformance && governor != cpuPolicyPowersave { //todo determine by reading available governors, its different for acpi Driver
-		return nil, fmt.Errorf("governor can only be set to '%s' or '%s'", cpuPolicyPerformance, cpuPolicyPowersave)
+	if governor == "" {
+		governor = defaultGovernor
 	}
+	if !checkGov(governor) { //todo determine by reading available governors, its different for acpi Driver
+		return nil, fmt.Errorf("governor can only be set to the following %v", availableGovs)
 
+	}
 	if epp != "" && governor == cpuPolicyPerformance && epp != cpuPolicyPerformance {
 		return nil, fmt.Errorf("only '%s' epp can be used with '%s' governor", cpuPolicyPerformance, cpuPolicyPerformance)
 	}
@@ -71,4 +74,13 @@ func (p *profileImpl) Name() string {
 
 func (p *profileImpl) Governor() string {
 	return p.governor
+}
+
+func checkGov(governor string) bool {
+	for _, element := range availableGovs {
+		if element == governor {
+			return true
+		}
+	}
+	return false
 }

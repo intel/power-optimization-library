@@ -2,19 +2,24 @@ package power
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewProfile(t *testing.T) {
+	availableGovs = []string{cpuPolicyPowersave, cpuPolicyPerformance}
 	profile, err := NewPowerProfile("name", 0, 100, cpuPolicyPowersave, "epp")
 
 	assert.ErrorIs(t, err, uninitialisedErr)
 
-	featureList[PStatesFeature].err = nil
-	defer func() { featureList[PStatesFeature].err = uninitialisedErr }()
+	featureList[FreqencyScalingFeature].err = nil
+	featureList[EPPFeature].err = nil
+	defer func() { featureList[FreqencyScalingFeature].err = uninitialisedErr }()
+	defer func() { featureList[EPPFeature].err = uninitialisedErr }()
 
 	profile, err = NewPowerProfile("name", 0, 100, cpuPolicyPowersave, "epp")
+	assert.NoError(t, err)
 	assert.Equal(t, "name", profile.(*profileImpl).name)
 	assert.Equal(t, uint(0), profile.(*profileImpl).min)
 	assert.Equal(t, uint(100*1000), profile.(*profileImpl).max)
@@ -34,6 +39,6 @@ func TestNewProfile(t *testing.T) {
 	assert.Nil(t, profile)
 
 	profile, err = NewPowerProfile("name", 0, 100, "something random", "epp")
-	assert.ErrorContains(t, err, fmt.Sprintf("governor can only be set to '%s' or '%s'", cpuPolicyPerformance, cpuPolicyPowersave))
+	assert.ErrorContains(t, err, "governor can only be set to the following")
 	assert.Nil(t, profile)
 }

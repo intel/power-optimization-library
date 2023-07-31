@@ -2,12 +2,14 @@ package power
 
 import (
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/hashicorp/go-multierror"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/go-logr/logr"
+	"github.com/hashicorp/go-multierror"
 )
 
 var basePath = "/sys/devices/system/cpu"
@@ -18,19 +20,30 @@ const (
 	sharedPoolName   = "sharedPool"
 	reservedPoolName = "reservedPool"
 
-	PStatesFeature featureID = iota
+	FreqencyScalingFeature featureID = iota
+	EPPFeature
 	CStatesFeature
 	UncoreFeature
 )
+
+type LibConfig struct {
+	CpuPath    string
+	ModulePath string
+	Cores uint
+}
 
 // initialized with null logger, can be set to proper logger with SetLogger
 var log = logr.Discard()
 
 // default declaration of defined features, defined to uninitialized state
 var featureList FeatureSet = map[featureID]*featureStatus{
-	PStatesFeature: {
+	EPPFeature: {
 		err:      uninitialisedErr,
-		initFunc: initPStates,
+		initFunc: initEpp,
+	},
+	FreqencyScalingFeature: {
+		err:      uninitialisedErr,
+		initFunc: initScalingDriver,
 	},
 	CStatesFeature: {
 		err:      uninitialisedErr,
@@ -42,7 +55,7 @@ var featureList FeatureSet = map[featureID]*featureStatus{
 	},
 }
 var uninitialisedErr = fmt.Errorf("feature uninitialized")
-var undefinedErr = fmt.Errorf("feature undefined")
+var undefinederr = fmt.Errorf("feature undefined")
 
 // featureStatus stores feature name, driver and if feature is not supported, error describing the reason
 type featureStatus struct {
@@ -108,7 +121,7 @@ func (set *FeatureSet) isFeatureIdSupported(id featureID) bool {
 func (set *FeatureSet) getFeatureIdError(id featureID) error {
 	feature, exists := (*set)[id]
 	if !exists {
-		return undefinedErr
+		return undefinederr
 	}
 	return feature.err
 }
@@ -130,10 +143,45 @@ func CreateInstance(hostName string) (Host, error) {
 	}
 	return host, allErrors.ErrorOrNil()
 }
+func CreateInstanceWithConf(hostname string, conf LibConfig) (Host, error) {
+	if conf.CpuPath != "" {
+		basePath = conf.CpuPath
+	}
+	if conf.ModulePath != "" {
+		kernelModulesFilePath = conf.ModulePath
+	}
+	getNumberOfCpus = func () uint { return conf.Cores}
+	return CreateInstance(hostname)
+}
 
 // getNumberOfCpus defined as var so can be mocked by the unit test
 var getNumberOfCpus = func() uint {
-	return uint(runtime.NumCPU())
+	// First, try to get CPUs from sysfs. If the sysfs isn't available
+	// return Number of CPUs from runtime
+	cpusAvailable, err := readStringFromFile(path.Join(basePath, "online"))
+	if err != nil {
+		return uint(runtime.NumCPU())
+	}
+
+	// Delete \n character and split the string to get
+	// first and last element
+	cpusAvailable = strings.Replace(cpusAvailable, "\n", "", -1)
+	cpuSlice := strings.Split(cpusAvailable, "-")
+	if len(cpuSlice) < 2 {
+		return uint(runtime.NumCPU())
+	}
+
+	// Calculate number of CPUs, if an error occurs
+	// return the number of CPUs from runtime
+	firstElement, err := strconv.Atoi(cpuSlice[0])
+	if err != nil {
+		return uint(runtime.NumCPU())
+	}
+	secondElement, err := strconv.Atoi(cpuSlice[1])
+	if err != nil {
+		return uint(runtime.NumCPU())
+	}
+	return uint((secondElement - firstElement) + 1)
 }
 
 // reads a file from a path, parses contents as an int a returns the value

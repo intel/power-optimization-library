@@ -41,9 +41,8 @@ func initHost(nodeName string) (Host, error) {
 	host := &hostImpl{
 		name:           nodeName,
 		exclusivePools: PoolList{},
-		featureStates:  &featureList,
 	}
-
+	host.featureStates = &featureList
 	// create predefined pools
 	host.reservedPool = &reservedPoolType{poolImpl{
 		name: reservedPoolName,

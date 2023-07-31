@@ -8,7 +8,7 @@ type poolImpl struct {
 	name string
 	cpus CpuList
 	host Host
-	// P-States
+	// Scaling-Driver
 	PowerProfile Profile
 	// C-States
 	CStatesProfile *CStates

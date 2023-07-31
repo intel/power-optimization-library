@@ -189,17 +189,22 @@ C4E/C5  Enhanced Deeper Sleep
 C6      Deep Power Down
 ````
 
-## P-State Governor
+## Scaling Driver
 
-The P-state governor feature allows the user to check if the P-state driver is enabled on the system. If the P-state
-driver is enabled while using the Kubernetes Power Manger, users may select a P-state governor per core, which are
-described as "performance" and "powersave" governors in the Power Profiles.
+### P-state
+  The P-state governor feature allows the user to check if the P-state driver is enabled on the system. If the P-state
+  driver is enabled while using the Kubernetes Power Manager, users may select a P-state governor per core, which are
+  described as "performance" and "powersave" governors in the Power Profiles.
 
 * Performance governor - The CPUfreq governor "performance" sets the CPU statically to the highest frequency within the
   borders of scaling_min_freq and scaling_max_freq.
 * Powersave governor - The CPUfreq governor "powersave" sets the CPU statically to the lowest frequency within the
   borders of scaling_min_freq and scaling_max_freq.
 
+### acpi-cpufreq
+  The acpi-cpufreq driver setting operates much like the P-state driver but has a different set of available governors. For more information see [here](https://www.kernel.org/doc/html/v4.12/admin-guide/pm/cpufreq.html).
+  One thing to note is that acpi-cpufreq reports the base clock as the frequency hardware limits however the P-state driver uses turbo frequency limits. 
+  Both drivers can make use of turbo frequency; however, acpi-cpufreq can exceed hardware frequency limits when using turbo frequency. This is important to take into account when setting frequencies for profiles.
 ## Topology
 
 Topology discovery is done via reading /sys/devices/system/cpuN/topology/{physical_package_id,die_id,core_id}. Based on

@@ -1,12 +1,13 @@
 package power
 
-// collection of P-States specific functions and methods
+// collection of Scaling Driver specific functions and methods
 
 import (
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -18,19 +19,24 @@ const (
 	scalingMinFile = "cpufreq/scaling_min_freq"
 
 	scalingGovFile = "cpufreq/scaling_governor"
+	availGovFile   = "cpufreq/scaling_available_governors"
 	eppFile        = "cpufreq/energy_performance_preference"
 
 	defaultEpp      = "default"
 	defaultGovernor = cpuPolicyPowersave
 
-	cpuPolicyPerformance = "performance"
-	cpuPolicyPowersave   = "powersave"
+	cpuPolicyPerformance  = "performance"
+	cpuPolicyPowersave    = "powersave"
+	cpuPolicyUserspace    = "userspace"
+	cpuPolicyOndemand     = "ondemand"
+	cpuPolicySchedutil    = "schedutil"
+	cpuPolicyConservative = "conservative"
 )
 
 var defaultPowerProfile *profileImpl
 
-func isPStatesDriverSupported(driver string) bool {
-	for _, s := range []string{"intel_pstate", "intel_cpufreq"} {
+func isScalingDriverSupported(driver string) bool {
+	for _, s := range []string{"intel_pstate", "intel_cpufreq", "acpi-cpufreq"} {
 		if driver == s {
 			return true
 		}
@@ -38,14 +44,22 @@ func isPStatesDriverSupported(driver string) bool {
 	return false
 }
 
-func initPStates() featureStatus {
+func initScalingDriver() featureStatus {
 	pStates := featureStatus{
-		name:     "P-States",
-		initFunc: initPStates,
+		name:     "Frequency-Scaling",
+		initFunc: initScalingDriver,
+	}
+	var err error
+	availableGovs, err = initAvailableGovernors()
+	if err != nil {
+		pStates.err = fmt.Errorf("failed to read available governors: %w", err)
 	}
 	driver, err := readCpuStringProperty(0, pStatesDrvFile)
+	if err != nil {
+		pStates.err = fmt.Errorf("%s - failed to read driver name: %w", pStates.name, err)
+	}
 	pStates.driver = driver
-	if !isPStatesDriverSupported(driver) {
+	if !isScalingDriverSupported(driver) {
 		pStates.err = fmt.Errorf("%s - unsupported driver: %s", pStates.name, driver)
 	}
 	if err != nil {
@@ -57,6 +71,28 @@ func initPStates() featureStatus {
 		}
 	}
 	return pStates
+}
+func initEpp() featureStatus {
+	epp := featureStatus{
+		name:     "Energy-Performance-Preference",
+		initFunc: initEpp,
+	}
+	_, err := readCpuStringProperty(0, eppFile)
+	if os.IsNotExist(errors.Unwrap(err)) {
+		epp.err = fmt.Errorf("EPP file %s does not exist", eppFile)
+	}
+	return epp
+}
+
+func initAvailableGovernors() ([]string, error) {
+	govs, err := readCpuStringProperty(0, availGovFile)
+	if err != nil {
+		return []string{}, err
+	}
+	return strings.Split(govs, " "), nil
+}
+func GetAvailableGovernors() []string{
+	return availableGovs
 }
 func generateDefaultProfile() error {
 	maxFreq, err := readCpuUintProperty(0, cpuMaxFreqFile)
@@ -84,17 +120,17 @@ func generateDefaultProfile() error {
 }
 
 func (cpu *cpuImpl) updateFrequencies() error {
-	if !IsFeatureSupported(PStatesFeature) {
+	if !IsFeatureSupported(FreqencyScalingFeature) {
 		return nil
 	}
 	if cpu.pool.GetPowerProfile() != nil {
-		return cpu.setPStatesValues(cpu.pool.GetPowerProfile())
+		return cpu.setDriverValues(cpu.pool.GetPowerProfile())
 	}
-	return cpu.setPStatesValues(defaultPowerProfile)
+	return cpu.setDriverValues(defaultPowerProfile)
 }
 
-// setPStatesValues is an entrypoint to P-States feature consolidation
-func (cpu *cpuImpl) setPStatesValues(powerProfile Profile) error {
+// setDriverValues is an entrypoint to power governor feature consolidation
+func (cpu *cpuImpl) setDriverValues(powerProfile Profile) error {
 	if err := cpu.writeGovernorValue(powerProfile.Governor()); err != nil {
 		return fmt.Errorf("failed to set governor for cpu %d: %w", cpu.id, err)
 	}

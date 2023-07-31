@@ -317,13 +317,13 @@ func (s *hostTestsSuite) TestUpdateProfile() {
 	//pool.On("Name").Return("powah")
 	host := hostImpl{
 		sharedPool:    new(poolMock),
-		featureStates: &FeatureSet{PStatesFeature: &featureStatus{err: nil}},
+		featureStates: &FeatureSet{FreqencyScalingFeature: &featureStatus{err: nil}},
 	}
 	origFeatureList := featureList
 	featureList = map[featureID]*featureStatus{
-		PStatesFeature: {
+		FreqencyScalingFeature: {
 			err:      nil,
-			initFunc: initPStates,
+			initFunc: initScalingDriver,
 		},
 		CStatesFeature: {
 			err:      nil,
