@@ -20,7 +20,7 @@ const (
 	sharedPoolName   = "sharedPool"
 	reservedPoolName = "reservedPool"
 
-	FreqencyScalingFeature featureID = iota
+	FrequencyScalingFeature featureID = iota
 	EPPFeature
 	CStatesFeature
 	UncoreFeature
@@ -29,7 +29,7 @@ const (
 type LibConfig struct {
 	CpuPath    string
 	ModulePath string
-	Cores uint
+	Cores      uint
 }
 
 // initialized with null logger, can be set to proper logger with SetLogger
@@ -41,7 +41,7 @@ var featureList FeatureSet = map[featureID]*featureStatus{
 		err:      uninitialisedErr,
 		initFunc: initEpp,
 	},
-	FreqencyScalingFeature: {
+	FrequencyScalingFeature: {
 		err:      uninitialisedErr,
 		initFunc: initScalingDriver,
 	},
@@ -150,7 +150,7 @@ func CreateInstanceWithConf(hostname string, conf LibConfig) (Host, error) {
 	if conf.ModulePath != "" {
 		kernelModulesFilePath = conf.ModulePath
 	}
-	getNumberOfCpus = func () uint { return conf.Cores}
+	getNumberOfCpus = func() uint { return conf.Cores }
 	return CreateInstance(hostname)
 }
 

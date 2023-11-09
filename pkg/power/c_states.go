@@ -43,7 +43,7 @@ func initCStates() featureStatus {
 	driver = strings.TrimSuffix(driver, "\n")
 	feature.driver = driver
 	if err != nil {
-		feature.err = fmt.Errorf("failed to determine driver")
+		feature.err = fmt.Errorf("failed to determine driver: %w", err)
 		return feature
 	}
 	if !isSupportedCStatesDriver(driver) {

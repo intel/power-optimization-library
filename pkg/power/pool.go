@@ -2,12 +2,14 @@ package power
 
 import (
 	"fmt"
+	"sync"
 )
 
 type poolImpl struct {
-	name string
-	cpus CpuList
-	host Host
+	name  string
+	cpus  CpuList
+	mutex sync.Locker
+	host  Host
 	// Scaling-Driver
 	PowerProfile Profile
 	// C-States
@@ -29,6 +31,8 @@ type Pool interface {
 
 	SetPowerProfile(profile Profile) error
 	GetPowerProfile() Profile
+
+	poolMutex() sync.Locker
 
 	// c-states
 	SetCStates(states CStates) error
@@ -71,8 +75,18 @@ func (pool *poolImpl) Clear() error {
 	panic("scuffed")
 } // virtual
 
+func (pool *poolImpl) poolMutex() sync.Locker {
+	return pool.mutex
+}
+
 func (pool *poolImpl) SetPowerProfile(profile Profile) error {
+	log.V(4).Info("SetPowerProfile mutex lock", "pool", pool.name)
+	pool.mutex.Lock()
 	pool.PowerProfile = profile
+	defer func() {
+		pool.mutex.Unlock()
+		log.V(4).Info("SetPowerProfile mutex unlock", "pool", pool.name)
+	}()
 	for _, cpu := range pool.cpus {
 		err := cpu.consolidate()
 		if err != nil {

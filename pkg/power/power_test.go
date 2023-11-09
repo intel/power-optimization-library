@@ -143,13 +143,13 @@ func Fuzz_library(f *testing.F) {
 		"package_01_die_00": uncoreFreqs,
 	}
 	cpuFreqs := map[string]string{
-		"max":     "123",
-		"min":     "100",
-		"epp":     "some",
-		"driver":  "intel_pstate",
+		"max":                 "123",
+		"min":                 "100",
+		"epp":                 "some",
+		"driver":              "intel_pstate",
 		"available_governors": "conservative ondemand userspace powersave",
-		"package": "0",
-		"die":     "0",
+		"package":             "0",
+		"die":                 "0",
 	}
 	cpuFreqsFiles := map[string]map[string]string{
 		"cpu0": cpuFreqs,
@@ -169,7 +169,7 @@ func Fuzz_library(f *testing.F) {
 	defer teardownUncore()
 	governorList := []string{"powersave", "performance"}
 	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
-	f.Add("node1","performance",uint(250000),uint(120000),uint(5),uint(10))
+	f.Add("node1", "performance", uint(250000), uint(120000), uint(5), uint(10))
 	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
 		basePath = "testing/cpus"
 		getNumberOfCpus = func() uint { return 8 }
@@ -249,7 +249,7 @@ func Fuzz_library(f *testing.F) {
 		if err != nil {
 			t.Error("could not set die uncore", err)
 		}
-		
+
 	}
 	f.Fuzz(fuzzTarget)
 

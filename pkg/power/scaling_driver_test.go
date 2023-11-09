@@ -57,17 +57,15 @@ func TestPreChecksScalingDriver(t *testing.T) {
 	teardown()
 	defer setupCpuScalingTests(map[string]map[string]string{
 		"cpu0": {
-			"driver": "acpi-cpufreq",
+			"driver":              "acpi-cpufreq",
 			"available_governors": "powersave",
-			"max": "3700",
-			"min": "3200",
+			"max":                 "3700",
+			"min":                 "3200",
 		},
 	})()
 	acpi := initScalingDriver()
 	assert.Equal(t, "acpi-cpufreq", acpi.driver)
 	assert.NoError(t, acpi.err)
-
-
 }
 
 func TestCoreImpl_updateFreqValues(t *testing.T) {

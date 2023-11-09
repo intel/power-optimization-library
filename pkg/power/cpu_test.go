@@ -27,6 +27,9 @@ func (m *cpuMock) _setPoolProperty(pool Pool) {
 func (m *cpuMock) consolidate() error {
 	return m.Called().Error(0)
 }
+func (m *cpuMock) consolidate_unsafe() error {
+	return m.Called().Error(0)
+}
 func (m *cpuMock) doSetPool(pool Pool) error {
 	return m.Called(pool).Error(0)
 }
@@ -46,6 +49,17 @@ func (m *cpuMock) SetPool(pool Pool) error {
 	return m.Called(pool).Error(0)
 }
 
+type mutexMock struct {
+	mock.Mock
+}
+
+func (m *mutexMock) Lock() {
+	m.Called()
+}
+
+func (m *mutexMock) Unlock() {
+	m.Called()
+}
 func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 	origBasePath := basePath
 	basePath = "testing/cpus"
@@ -57,7 +71,7 @@ func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 	getNumberOfCpus = func() uint { return uint(len(cpufiles)) }
 
 	// "initialise" P-States feature
-	featureList[FreqencyScalingFeature].err = nil
+	featureList[FrequencyScalingFeature].err = nil
 
 	// if cpu0 is here we set its values to temporary defaultPowerProfile
 	if cpu0, ok := cpufiles["cpu0"]; ok {
@@ -113,7 +127,7 @@ func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 		// revert get number of system cpus function
 		getNumberOfCpus = origGetNumOfCpusFunc
 		// revert scaling driver feature to un initialised state
-		featureList[FreqencyScalingFeature].err = uninitialisedErr
+		featureList[FrequencyScalingFeature].err = uninitialisedErr
 		// revert default powerProfile
 		defaultPowerProfile = defaultDefaultPowerProfile
 	}
@@ -143,7 +157,7 @@ func TestNewCore(t *testing.T) {
 	}, cpu)
 
 	// now "break" scaling driver by setting a feature error
-	featureList[FreqencyScalingFeature].err = fmt.Errorf("some error")
+	featureList[FrequencyScalingFeature].err = fmt.Errorf("some error")
 
 	cpu, err = newCpu(0, nil)
 
@@ -159,6 +173,7 @@ func TestNewCore(t *testing.T) {
 
 func TestCpuImpl_SetPool(t *testing.T) {
 	// feature errors are set so functions inside consolidate() return without doing anything
+	var cpuMutex *mutexMock
 	host := new(hostMock)
 
 	sharedPool := new(poolMock)
@@ -167,6 +182,7 @@ func TestCpuImpl_SetPool(t *testing.T) {
 	sharedPool.On("Name").Return("shared")
 	sharedPoolCores := make(CpuList, 8)
 	sharedPool.On("Cpus").Return(&sharedPoolCores)
+	sharedPool.On("poolMutex").Return(&sync.Mutex{})
 
 	reservedPool := new(poolMock)
 	reservedPool.On("isExclusive").Return(false)
@@ -174,6 +190,7 @@ func TestCpuImpl_SetPool(t *testing.T) {
 	reservedPool.On("Name").Return("reserved")
 	reservedPoolCores := make(CpuList, 8)
 	reservedPool.On("Cpus").Return(&reservedPoolCores)
+	reservedPool.On("poolMutex").Return(&sync.Mutex{})
 
 	host.On("GetReservedPool").Return(reservedPool)
 	host.On("GetSharedPool").Return(sharedPool)
@@ -184,6 +201,7 @@ func TestCpuImpl_SetPool(t *testing.T) {
 	exclusivePool1.On("Name").Return("excl1")
 	exclusivePool1Cores := make(CpuList, 8)
 	exclusivePool1.On("Cpus").Return(&exclusivePool1Cores)
+	exclusivePool1.On("poolMutex").Return(&sync.Mutex{})
 
 	exclusivePool2 := new(poolMock)
 	exclusivePool2.On("isExclusive").Return(true)
@@ -191,115 +209,210 @@ func TestCpuImpl_SetPool(t *testing.T) {
 	exclusivePool2.On("Name").Return("excl2")
 	exclusivePool2Cores := make(CpuList, 8)
 	exclusivePool2.On("Cpus").Return(&exclusivePool2Cores)
+	exclusivePool2.On("poolMutex").Return(&sync.Mutex{})
 
 	cpu := &cpuImpl{
-		id:    0,
-		mutex: &sync.Mutex{},
-		pool:  sharedPool,
+		id:   0,
+		pool: sharedPool,
 	}
 	// nil pool
+	// in this scenario we don't expect lock to be acquired
+	cpu.mutex = new(mutexMock)
 	assert.ErrorContains(t, cpu.SetPool(nil), "cannot be nil")
 
 	// current == target pool, case 0
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	assert.NoError(t, cpu.SetPool(sharedPool))
 	sharedPool.AssertNotCalled(t, "isExclusive")
 	assert.True(t, cpu.pool == sharedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// shared to reserved
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	sharedPoolCores[0] = cpu
 	cpu.pool = sharedPool
 	assert.NoError(t, cpu.SetPool(reservedPool))
 	assert.True(t, cpu.pool == reservedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// shared to shared
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = sharedPool
 	sharedPoolCores[0] = cpu
 	assert.NoError(t, cpu.SetPool(sharedPool))
 	assert.True(t, cpu.pool == sharedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// shared to exclusive
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = sharedPool
 	sharedPoolCores[0] = cpu
 	assert.NoError(t, cpu.SetPool(exclusivePool1))
 	assert.True(t, cpu.pool == exclusivePool1)
+	cpuMutex.AssertExpectations(t)
 
 	// reserved to reserved
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = reservedPool
 	reservedPoolCores[0] = cpu
 	assert.NoError(t, cpu.SetPool(reservedPool))
 	assert.True(t, cpu.pool == reservedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// reserved to shared
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = reservedPool
 	reservedPoolCores[0] = cpu
 	assert.NoError(t, cpu.SetPool(sharedPool))
 	assert.True(t, cpu.pool == sharedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// reserved to exclusive
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = reservedPool
 	reservedPoolCores[0] = cpu
 	assert.ErrorContains(t, cpu.SetPool(exclusivePool1), "reserved to exclusive")
 	assert.True(t, cpu.pool == reservedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// exclusive to reserved
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = exclusivePool1
 	exclusivePool1Cores[0] = cpu
 	assert.ErrorContains(t, cpu.SetPool(reservedPool), "exclusive to reserved")
 	assert.True(t, cpu.pool == exclusivePool1)
+	cpuMutex.AssertExpectations(t)
 
 	// exclusive to shared
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = exclusivePool1
 	exclusivePool1Cores[0] = cpu
 	assert.NoError(t, cpu.SetPool(sharedPool))
 	assert.True(t, cpu.pool == sharedPool)
+	cpuMutex.AssertExpectations(t)
 
 	// exclusive to same exclusive
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = exclusivePool1
 	exclusivePool1Cores[0] = cpu
 	assert.NoError(t, cpu.SetPool(exclusivePool1))
 	assert.True(t, cpu.pool == exclusivePool1)
+	cpuMutex.AssertExpectations(t)
 
 	//exclusive to another exclusive
+	cpuMutex = new(mutexMock)
+	cpuMutex.On("Unlock").Return().NotBefore(
+		cpuMutex.On("Lock").Return(),
+	)
+	cpu.mutex = cpuMutex
 	cpu.pool = exclusivePool1
 	exclusivePool1Cores[0] = cpu
 	assert.ErrorContains(t, cpu.SetPool(exclusivePool2), " exclusive to different exclusive")
 	assert.True(t, cpu.pool == exclusivePool1)
+	cpuMutex.AssertExpectations(t)
 }
 
 func TestCpuImpl_doSetPool(t *testing.T) {
 	var sourcePool, targetPool *poolMock
+	var sourcePoolMutex, targetPoolMutex *mutexMock
+
 	var cpu *cpuImpl
 	// happy path
 	sourcePool = new(poolMock)
 	sourcePool.On("Name").Return("sauce")
+	sourcePoolMutex = new(mutexMock)
+
+	sourcePoolMutex.On("Unlock").Return().NotBefore(
+		sourcePoolMutex.On("Lock").Return(),
+	)
+	sourcePool.On("poolMutex").Return(sourcePoolMutex)
 
 	targetPool = new(poolMock)
-	targetPool.On("name").Return("target")
+	targetPool.On("Name").Return("target")
+	targetPoolMutex = new(mutexMock)
+
+	targetPoolMutex.On("Unlock").Return().NotBefore(
+		targetPoolMutex.On("Lock").Return(),
+	)
+	targetPool.On("poolMutex").Return(targetPoolMutex)
+
 	cpu = &cpuImpl{
-		pool:  sourcePool,
-		mutex: &sync.Mutex{},
+		pool: sourcePool,
 	}
 	sourcePool.On("Cpus").Return(&CpuList{cpu})
 	targetPool.On("Cpus").Return(&CpuList{})
 
 	assert.NoError(t, cpu.doSetPool(targetPool))
 	assert.True(t, cpu.pool == targetPool)
+	sourcePoolMutex.AssertExpectations(t)
+	targetPoolMutex.AssertExpectations(t)
 
 	// remove failure
 	sourcePool = new(poolMock)
 	sourcePool.On("Name").Return("sauce")
+	sourcePoolMutex.On("Unlock").Return().NotBefore(
+		sourcePoolMutex.On("Lock").Return(),
+	)
+	sourcePool.On("poolMutex").Return(sourcePoolMutex)
 
 	targetPool = new(poolMock)
-	targetPool.On("name").Return("target")
+	targetPool.On("Name").Return("target")
+	targetPoolMutex = new(mutexMock)
+	targetPoolMutex.On("Unlock").Return().NotBefore(
+		targetPoolMutex.On("Lock").Return(),
+	)
+	targetPool.On("poolMutex").Return(targetPoolMutex)
+
 	cpu = &cpuImpl{
-		pool:  sourcePool,
-		mutex: &sync.Mutex{},
+		pool: sourcePool,
 	}
 	sourcePool.On("Cpus").Return(&CpuList{})
 	targetPool.On("Cpus").Return(&CpuList{})
 
 	assert.ErrorContains(t, cpu.doSetPool(targetPool), "not in pool")
 	assert.True(t, cpu.pool == sourcePool)
+	sourcePoolMutex.AssertExpectations(t)
+	targetPoolMutex.AssertExpectations(t)
 }
 
 func TestCoreList_IDs(t *testing.T) {

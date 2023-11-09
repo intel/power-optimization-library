@@ -2,6 +2,7 @@ package power
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,10 @@ import (
 
 type poolMock struct {
 	mock.Mock
+}
+
+func (m *poolMock) poolMutex() sync.Locker {
+	return m.Called().Get(0).(sync.Locker)
 }
 
 func (m *poolMock) SetCStates(states CStates) error {
@@ -412,10 +417,15 @@ func TestPoolImpl_SetPowerProfile(t *testing.T) {
 		cores[i] = core
 	}
 
-	pool := &poolImpl{cpus: cores}
+	poolMutex := new(mutexMock)
+	poolMutex.On("Unlock").Return().NotBefore(
+		poolMutex.On("Lock").Return(),
+	)
+	pool := &poolImpl{cpus: cores, mutex: poolMutex}
 	powerProfile := new(profileImpl)
 	assert.NoError(t, pool.SetPowerProfile(powerProfile))
 	assert.True(t, pool.PowerProfile == powerProfile)
+	poolMutex.AssertExpectations(t)
 	for _, core := range cores {
 		core.(*cpuMock).AssertExpectations(t)
 	}

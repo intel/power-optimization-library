@@ -13,9 +13,9 @@ func TestNewProfile(t *testing.T) {
 
 	assert.ErrorIs(t, err, uninitialisedErr)
 
-	featureList[FreqencyScalingFeature].err = nil
+	featureList[FrequencyScalingFeature].err = nil
 	featureList[EPPFeature].err = nil
-	defer func() { featureList[FreqencyScalingFeature].err = uninitialisedErr }()
+	defer func() { featureList[FrequencyScalingFeature].err = uninitialisedErr }()
 	defer func() { featureList[EPPFeature].err = uninitialisedErr }()
 
 	profile, err = NewPowerProfile("name", 0, 100, cpuPolicyPowersave, "epp")
