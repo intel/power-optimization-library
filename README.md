@@ -14,7 +14,6 @@ This library is currently used as part of the
 
 * Pool based Frequency Tuning
 * Facilitate use of Intel SST (Speed Select Technology) Suite
-    * SST-BF - Speed Select Technology - Base Frequency
     * SST-CP - Speed Select Technology - Core Power
 * C-States control
 * Uncore frequency
@@ -33,13 +32,6 @@ This library is currently used as part of the
 **Note:** on Ubuntu systems for Uncore frequency feature a ``linux-generic-hwe`` kernel is required
 
 # Definitions
-
-**Intel SST-BF (Speed Select - Base Frequency)** - allows the user to control the base frequency of certain cores.
-The base frequency is a guaranteed level of performance on the CPU (a CPU will never go below its base frequency).
-Priority cores can be set to a higher base frequency than a majority of the other cores on the system to which they
-can apply their critical workloads for a guaranteed performance.
-
-Frequency tuning allows the individual CPUs on the system to be sped up or slowed down by changing their frequency.
 
 **Intel SST-CP (Speed Select Technology - Core Power)** - allows the user to group cores into levels of priority.
 When there is power to spare on the system, it can be distributed among the cores based on their priority level.
