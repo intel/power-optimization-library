@@ -4,10 +4,10 @@ package power
 import (
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // this test checks for potential race condition where one go routine moves cpus to a pool and another changes a power
@@ -58,24 +58,23 @@ func doConcurrentMoveCPUSetProfile(t *testing.T) {
 	profile, err := NewPowerProfile("pwr", 100, 1000, "performance", "performance")
 	assert.NoError(t, err)
 
-	wg := sync.WaitGroup{}
+	moveCoresErrChan := make(chan error)
+	setPowerProfileErrChan2 := make(chan error)
 
-	moveCoresFunc := func() {
-		defer wg.Done()
-		// move all cores to shared pool
-		assert.NoError(t, instance.GetSharedPool().MoveCpus(*instance.GetAllCpus()))
-	}
-	setPowerProfileFunc := func() {
-		defer wg.Done()
+	go func(instance Host, errChannel chan error) {
+		errChannel <- instance.GetSharedPool().MoveCpus(*instance.GetAllCpus())
+	}(instance, moveCoresErrChan)
+
+	go func(instance Host, profile Profile, errChannel chan error) {
 		time.Sleep(5 * time.Millisecond)
-		// set power profile on shared pool
-		assert.NoError(t, instance.GetSharedPool().SetPowerProfile(profile))
-	}
+		errChannel <- instance.GetSharedPool().SetPowerProfile(profile)
+	}(instance, profile, setPowerProfileErrChan2)
 
-	wg.Add(2)
-	go moveCoresFunc()
-	go setPowerProfileFunc()
-	wg.Wait()
+	assert.NoError(t, <-moveCoresErrChan)
+	close(moveCoresErrChan)
+
+	assert.NoError(t, <-setPowerProfileErrChan2)
+	close(setPowerProfileErrChan2)
 
 	assert.Equal(t, profile, instance.GetSharedPool().GetPowerProfile())
 	assert.ElementsMatch(t, *instance.GetAllCpus(), *instance.GetSharedPool().Cpus())
