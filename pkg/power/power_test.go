@@ -31,13 +31,18 @@ func TestFeatureSet_init(t *testing.T) {
 
 	// error
 	called = false
+	
+	expectedFeatureError := fmt.Errorf("error")
 	set[0] = &featureStatus{
 		initFunc: func() featureStatus {
 			called = true
-			return featureStatus{err: fmt.Errorf("error")}
+			return featureStatus{err: expectedFeatureError}
 		},
 	}
-	assert.Equal(t, 1, set.init().Len())
+
+	featureErr := set.init()
+	assert.ErrorIs(t, featureErr, expectedFeatureError)
+	assert.Len(t, featureErr.(interface{ Unwrap() []error }).Unwrap(), 1)
 	assert.True(t, called)
 }
 
