@@ -16,6 +16,7 @@ type Cpu interface {
 	getPool() Pool
 	doSetPool(pool Pool) error
 	consolidate() error
+	consolidate_unsafe() error
 
 	// C-States stuff
 	SetCStates(cStates CStates) error
@@ -26,7 +27,7 @@ type Cpu interface {
 
 type cpuImpl struct {
 	id    uint
-	mutex *sync.Mutex
+	mutex sync.Locker
 	pool  Pool
 	core  *cpuCore
 	// C-States properties
@@ -44,6 +45,11 @@ func newCpu(coreID uint, core *cpuCore) (Cpu, error) {
 }
 
 func (cpu *cpuImpl) consolidate() error {
+	cpu.mutex.Lock()
+	defer cpu.mutex.Unlock()
+	return cpu.consolidate_unsafe()
+}
+func (cpu *cpuImpl) consolidate_unsafe() error {
 	if err := cpu.updateFrequencies(); err != nil {
 		return err
 	}
@@ -52,6 +58,9 @@ func (cpu *cpuImpl) consolidate() error {
 	}
 	return nil
 }
+
+
+
 
 // SetPool moves current core to a specified target pool
 // allowed movements are reservedPoolType <-> sharedPoolType and sharedPoolType <-> any exclusive pool
@@ -77,6 +86,9 @@ func (cpu *cpuImpl) SetPool(targetPool Pool) error {
 	}
 
 	log.Info("Set pool", "cpu", cpu.id, "source pool", cpu.pool.Name(), "target pool", targetPool.Name())
+	cpu.mutex.Lock()
+	defer cpu.mutex.Unlock()
+
 	if cpu.pool == targetPool { // case 0,1,5
 		return nil
 	}
@@ -102,16 +114,18 @@ func (cpu *cpuImpl) SetPool(targetPool Pool) error {
 }
 
 func (cpu *cpuImpl) doSetPool(pool Pool) error {
-	log.V(4).Info("mutex locking cpu", "coreID", cpu.id)
-	cpu.mutex.Lock()
-
-	defer func() {
-		log.V(4).Info("mutex unlocking cpu", "coreID", cpu.id)
-		cpu.mutex.Unlock()
-	}()
+	cpu.pool.poolMutex().Lock()
+	pool.poolMutex().Lock()
+	log.V(4).Info("acquired mutexes", "source", cpu.pool.Name(), "target", pool.Name(), "cpu")
 
 	origPool := cpu.pool
 	cpu.pool = pool
+
+	defer func() {
+		log.V(4).Info("releasing mutexes", "source", origPool.Name(), "target", pool.Name())
+		origPool.poolMutex().Unlock()
+		pool.poolMutex().Unlock()
+	}()
 
 	origPoolCpus := origPool.Cpus()
 	log.V(4).Info("removing cpu from pool", "pool", origPool.Name(), "coreID", cpu.id)
@@ -121,7 +135,7 @@ func (cpu *cpuImpl) doSetPool(pool Pool) error {
 	}
 
 	log.V(4).Info("starting consolidation of cpu", "coreID", cpu.id)
-	if err := cpu.consolidate(); err != nil {
+	if err := cpu.consolidate_unsafe(); err != nil {
 		cpu.pool = origPool
 		origPoolCpus.add(cpu)
 		return err

@@ -28,8 +28,8 @@ var availableGovs []string
 
 // NewPowerProfile creates a power profile,
 func NewPowerProfile(name string, minFreq uint, maxFreq uint, governor string, epp string) (Profile, error) {
-	if !featureList.isFeatureIdSupported(FreqencyScalingFeature) {
-		return nil, featureList.getFeatureIdError(FreqencyScalingFeature)
+	if !featureList.isFeatureIdSupported(FrequencyScalingFeature) {
+		return nil, featureList.getFeatureIdError(FrequencyScalingFeature)
 	}
 
 	if minFreq > maxFreq {

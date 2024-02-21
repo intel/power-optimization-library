@@ -2,6 +2,7 @@ package power
 
 import (
 	"fmt"
+	"sync"
 )
 
 // The hostImpl is the backing object of Host interface
@@ -45,13 +46,15 @@ func initHost(nodeName string) (Host, error) {
 	host.featureStates = &featureList
 	// create predefined pools
 	host.reservedPool = &reservedPoolType{poolImpl{
-		name: reservedPoolName,
-		host: host,
+		name:  reservedPoolName,
+		mutex: &sync.Mutex{},
+		host:  host,
 	}}
 	host.sharedPool = &sharedPoolType{poolImpl{
-		name: sharedPoolName,
-		cpus: CpuList{},
-		host: host,
+		name:  sharedPoolName,
+		cpus:  CpuList{},
+		mutex: &sync.Mutex{},
+		host:  host,
 	}}
 
 	topology, err := discoverTopology()
@@ -92,9 +95,10 @@ func (host *hostImpl) AddExclusivePool(poolName string) (Pool, error) {
 		return host.exclusivePools[i], fmt.Errorf("pool with name %s already exists", poolName)
 	}
 	var pool Pool = &exclusivePoolType{poolImpl{
-		name: poolName,
-		cpus: make([]Cpu, 0),
-		host: host,
+		name:  poolName,
+		mutex: &sync.Mutex{},
+		cpus:  make([]Cpu, 0),
+		host:  host,
 	}}
 
 	host.exclusivePools.add(pool)

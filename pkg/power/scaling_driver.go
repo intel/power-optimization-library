@@ -91,7 +91,7 @@ func initAvailableGovernors() ([]string, error) {
 	}
 	return strings.Split(govs, " "), nil
 }
-func GetAvailableGovernors() []string{
+func GetAvailableGovernors() []string {
 	return availableGovs
 }
 func generateDefaultProfile() error {
@@ -120,7 +120,7 @@ func generateDefaultProfile() error {
 }
 
 func (cpu *cpuImpl) updateFrequencies() error {
-	if !IsFeatureSupported(FreqencyScalingFeature) {
+	if !IsFeatureSupported(FrequencyScalingFeature) {
 		return nil
 	}
 	if cpu.pool.GetPowerProfile() != nil {
