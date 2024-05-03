@@ -38,6 +38,10 @@ func (m *hostMock) GetName() string {
 	return m.Called().String(0)
 }
 
+func (m *hostMock) NumCoreTypes() uint {
+	return m.Called().Get(0).(uint)
+}
+
 func (m *hostMock) GetFeaturesInfo() FeatureSet {
 	ret := m.Called().Get(0)
 	if ret == nil {
@@ -91,6 +95,10 @@ func (m *hostMock) GetAllCpus() *CpuList {
 	} else {
 		return ret.(*CpuList)
 	}
+}
+
+func (m *hostMock) GetFreqRanges() CoreTypeList {
+	return m.Called().Get(0).(CoreTypeList)
 }
 
 func TestHost_initHost(t *testing.T) {
@@ -182,7 +190,8 @@ func (s *hostTestsSuite) TestHostImpl_SetReservedPoolCores() {
 	topology := new(mockCpuTopology)
 	host := &hostImpl{topology: topology}
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 
 		cores[i] = core
@@ -208,7 +217,8 @@ func (s *hostTestsSuite) TestAddSharedPool() {
 	host := &hostImpl{topology: topology}
 	host.sharedPool = &sharedPoolType{poolImpl{PowerProfile: &profileImpl{}, mutex: &sync.Mutex{}, host: host}}
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 
 		cores[i] = core
@@ -224,9 +234,6 @@ func (s *hostTestsSuite) TestAddSharedPool() {
 	copy(referenceCores, cores[0:2])
 	s.Nil(host.GetSharedPool().SetCpus(referenceCores))
 
-	//cpus[1].(*coreMock).AssertNotCalled(s.T(), "setPStatesValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-	//cpus[2].(*coreMock).AssertCalled(s.T(), "setPStatesValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-
 	s.ElementsMatch(host.sharedPool.Cpus().IDs(), referenceCores.IDs())
 }
 
@@ -238,7 +245,8 @@ func (s *hostTestsSuite) TestRemoveCoreFromExclusivePool() {
 	}
 	cores := make(CpuList, 4)
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 
 		cores[i] = core
@@ -286,7 +294,8 @@ func (s *hostTestsSuite) TestAddCoresToExclusivePool() {
 	host.name = "test_node"
 	cores := make(CpuList, 4)
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 
 		cores[i] = core
@@ -305,9 +314,6 @@ func (s *hostTestsSuite) TestAddCoresToExclusivePool() {
 	unmoved := cores[2:]
 	s.ElementsMatch(host.GetSharedPool().Cpus().IDs(), unmoved.IDs())
 	s.Len(host.GetExclusivePool("test").Cpus().IDs(), 2)
-	// for _, core := range host.exclusivePools[0].(*poolImpl).cpus {
-	// 	core.(*coreMock).AssertCalled(s.T(), "setPStatesValues", "", "", 0, 0)
-	// }
 
 }
 
@@ -358,7 +364,8 @@ func (s *hostTestsSuite) TestRemoveCoresFromSharedPool() {
 	host.name = "test_node"
 	cores := make(CpuList, 4)
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 
 		cores[i] = core
@@ -391,7 +398,8 @@ func (s *hostTestsSuite) TestGetExclusivePool() {
 func (s *hostTestsSuite) TestGetSharedPool() {
 	cores := make(CpuList, 4)
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 
 		cores[i] = core
@@ -411,7 +419,8 @@ func (s *hostTestsSuite) TestGetSharedPool() {
 func (s *hostTestsSuite) TestGetReservedPool() {
 	cores := make(CpuList, 4)
 	for i := range cores {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 		cores[i] = core
 	}
@@ -431,7 +440,8 @@ func (s *hostTestsSuite) TestDeleteProfile() {
 	allCores := make(CpuList, 12)
 	sharedCores := make(CpuList, 4)
 	for i := 0; i < 4; i++ {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 		allCores[i] = core
 		sharedCores[i] = core
@@ -441,7 +451,8 @@ func (s *hostTestsSuite) TestDeleteProfile() {
 
 	p1cores := make(CpuList, 4)
 	for i := 4; i < 8; i++ {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 		allCores[i] = core
 		p1cores[i-4] = core
@@ -451,7 +462,8 @@ func (s *hostTestsSuite) TestDeleteProfile() {
 
 	p2cores := make(CpuList, 4)
 	for i := 8; i < 12; i++ {
-		core, err := newCpu(uint(i), nil)
+		m := new(mockCpuCore)
+		core, err := newCpu(uint(i), m)
 		s.Nil(err)
 		allCores[i] = core
 		p2cores[i-8] = core

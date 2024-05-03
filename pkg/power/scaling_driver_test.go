@@ -73,7 +73,11 @@ func TestCoreImpl_updateFreqValues(t *testing.T) {
 	const (
 		maxDefault   = 9990
 		maxFreqToSet = 8888
+		minFreqToSet = 1000
 	)
+	typeCopy := coreTypes
+	coreTypes = CoreTypeList{&CpuFrequencySet{min: minFreqToSet, max: maxDefault}}
+	defer func() { coreTypes = typeCopy }()
 
 	core = &cpuImpl{}
 	// p-states not supported
@@ -82,17 +86,24 @@ func TestCoreImpl_updateFreqValues(t *testing.T) {
 	teardown := setupCpuScalingTests(map[string]map[string]string{
 		"cpu0": {
 			"max": fmt.Sprint(maxDefault),
+			"min": fmt.Sprint(minFreqToSet),
 		},
 	})
+
 	defer teardown()
 
 	// set desired power profile
+	host := new(hostMock)
 	pool := new(poolMock)
 	core = &cpuImpl{
 		id:   0,
 		pool: pool,
+		core: &cpuCore{coreType: 0},
 	}
-	pool.On("GetPowerProfile").Return(&profileImpl{max: maxFreqToSet})
+	pool.On("GetPowerProfile").Return(&profileImpl{max: maxFreqToSet, min: minFreqToSet})
+	pool.On("getHost").Return(host)
+	host.On("NumCoreTypes").Return(uint(1))
+
 	assert.NoError(t, core.updateFrequencies())
 	maxFreqContent, _ := os.ReadFile(filepath.Join(basePath, "cpu0", scalingMaxFile))
 	maxFreqInt, _ := strconv.Atoi(string(maxFreqContent))
@@ -103,6 +114,7 @@ func TestCoreImpl_updateFreqValues(t *testing.T) {
 	pool = new(poolMock)
 	core.pool = pool
 	pool.On("GetPowerProfile").Return(nil)
+	pool.On("getHost").Return(host)
 	assert.NoError(t, core.updateFrequencies())
 	maxFreqContent, _ = os.ReadFile(filepath.Join(basePath, "cpu0", scalingMaxFile))
 	maxFreqInt, _ = strconv.Atoi(string(maxFreqContent))
@@ -118,10 +130,22 @@ func TestCoreImpl_setPstatsValues(t *testing.T) {
 		governorToSet = "powersave"
 		eppToSet      = "testEpp"
 	)
+	featureList[FrequencyScalingFeature].err = nil
 	featureList[EPPFeature].err = nil
+	typeCopy := coreTypes
+	coreTypes = CoreTypeList{&CpuFrequencySet{min: 1000, max: 9000}}
+	defer func() { coreTypes = typeCopy }()
 	defer func() { featureList[EPPFeature].err = uninitialisedErr }()
+	defer func() { featureList[FrequencyScalingFeature].err = uninitialisedErr }()
+
+	poolmk := new(poolMock)
+	host := new(hostMock)
+	poolmk.On("getHost").Return(host)
+	host.On("NumCoreTypes").Return(uint(1))
 	core := &cpuImpl{
-		id: 0,
+		id:   0,
+		core: &cpuCore{id: 0, coreType: 0},
+		pool: poolmk,
 	}
 
 	teardown := setupCpuScalingTests(map[string]map[string]string{

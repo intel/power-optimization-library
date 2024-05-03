@@ -33,6 +33,44 @@ const (
 	cpuPolicyConservative = "conservative"
 )
 
+type (
+	CpuFrequencySet struct {
+		min uint
+		max uint
+	}
+	FreqSet interface {
+		GetMin() uint
+		GetMax() uint
+	}
+	typeSetter interface {
+		GetType() uint
+		setType(uint)
+	}
+	CoreTypeList []FreqSet
+)
+
+func (s *CpuFrequencySet) GetMin() uint {
+	return s.min
+}
+
+func (s *CpuFrequencySet) GetMax() uint {
+	return s.max
+}
+
+// returns the index of a frequency set in a list and appends it if it's not
+// in the list already. this index is used to classify a core's type
+func (l *CoreTypeList) appendIfUnique(min uint, max uint) uint {
+	for i, coreType := range coreTypes {
+		if coreType.GetMin() == min && coreType.GetMax() == max {
+			// core type exists so return index
+			return uint(i)
+		}
+	}
+	// core type doesn't exist so append it and return index
+	coreTypes = append(coreTypes, &CpuFrequencySet{min: min, max: max})
+	return uint(len(coreTypes) - 1)
+}
+
 var defaultPowerProfile *profileImpl
 
 func isScalingDriverSupported(driver string) bool {
@@ -110,11 +148,13 @@ func generateDefaultProfile() error {
 		epp = ""
 	}
 	defaultPowerProfile = &profileImpl{
-		name:     "default",
-		max:      maxFreq,
-		min:      minFreq,
-		epp:      epp,
-		governor: defaultGovernor,
+		name:         "default",
+		max:          maxFreq,
+		min:          minFreq,
+		efficientMax: 0,
+		efficientMin: 0,
+		epp:          epp,
+		governor:     defaultGovernor,
 	}
 	return nil
 }
@@ -139,15 +179,34 @@ func (cpu *cpuImpl) setDriverValues(powerProfile Profile) error {
 			return fmt.Errorf("failed to set EPP value for cpu %d: %w", cpu.id, err)
 		}
 	}
-	if err := cpu.writeScalingMaxFreq(powerProfile.MaxFreq()); err != nil {
+	minFreq, maxFreq := cpu.getFreqsToScale(powerProfile)
+	absMin, absMax := cpu.GetAbsMinMax()
+	if maxFreq > absMax || minFreq < absMin {
+		return fmt.Errorf("setting frequency %d-%d aborted as frequency range is min: %d max: %d. resetting to default",
+			powerProfile.MinFreq(), powerProfile.MaxFreq(), absMin, absMax)
+	}
+	if err := cpu.writeScalingMaxFreq(maxFreq); err != nil {
 		return fmt.Errorf("failed to set MaxFreq value for cpu %d: %w", cpu.id, err)
 	}
-	if err := cpu.writeScalingMinFreq(powerProfile.MinFreq()); err != nil {
-		return fmt.Errorf("failed to set MaxFreq value for cpu %d: %w", cpu.id, err)
+	if err := cpu.writeScalingMinFreq(minFreq); err != nil {
+		return fmt.Errorf("failed to set MinFreq value for cpu %d: %w", cpu.id, err)
 	}
-
 	return nil
+
 }
+
+func (cpu *cpuImpl) getFreqsToScale(profile Profile) (uint, uint) {
+	switch cpu.GetCore().GetType() {
+	case CpuTypeReferences.Pcore():
+		return profile.MinFreq(), profile.MaxFreq()
+	case CpuTypeReferences.Ecore():
+		return profile.EfficientMinFreq(), profile.EfficientMaxFreq()
+	default:
+		// something went wrong. default to these values which will likely result in error
+		return profile.MinFreq(), profile.MaxFreq()
+	}
+}
+
 func (cpu *cpuImpl) writeGovernorValue(governor string) error {
 	return os.WriteFile(filepath.Join(basePath, fmt.Sprint("cpu", cpu.id), scalingGovFile), []byte(governor), 0644)
 }

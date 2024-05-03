@@ -37,6 +37,11 @@ func (m *cpuMock) GetID() uint {
 	args := m.Called()
 	return args.Get(0).(uint)
 }
+func (m *cpuMock) GetAbsMinMax() (uint, uint) {
+	args := m.Called()
+	return args.Get(0).(uint), args.Get(1).(uint)
+}
+
 func (m *cpuMock) getPool() Pool {
 	args := m.Called().Get(0)
 	if args == nil {
@@ -45,6 +50,11 @@ func (m *cpuMock) getPool() Pool {
 		return args.(Pool)
 	}
 }
+
+func (m *cpuMock) GetCore() Core {
+	return m.Called().Get(0).(Core)
+}
+
 func (m *cpuMock) SetPool(pool Pool) error {
 	return m.Called(pool).Error(0)
 }
@@ -64,7 +74,8 @@ func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 	origBasePath := basePath
 	basePath = "testing/cpus"
 	defaultDefaultPowerProfile := defaultPowerProfile
-
+	typeCopy := coreTypes
+	referenceCopy := CpuTypeReferences
 	// backup pointer to function that gets all CPUs
 	// replace it with our controlled function
 	origGetNumOfCpusFunc := getNumberOfCpus
@@ -128,6 +139,8 @@ func setupCpuScalingTests(cpufiles map[string]map[string]string) func() {
 		getNumberOfCpus = origGetNumOfCpusFunc
 		// revert scaling driver feature to un initialised state
 		featureList[FrequencyScalingFeature].err = uninitialisedErr
+		coreTypes = typeCopy
+		CpuTypeReferences = referenceCopy
 		// revert default powerProfile
 		defaultPowerProfile = defaultDefaultPowerProfile
 	}
@@ -155,7 +168,6 @@ func TestNewCore(t *testing.T) {
 		id:   0,
 		core: core,
 	}, cpu)
-
 	// now "break" scaling driver by setting a feature error
 	featureList[FrequencyScalingFeature].err = fmt.Errorf("some error")
 

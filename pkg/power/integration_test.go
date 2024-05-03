@@ -4,6 +4,7 @@ package power
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 	"time"
 
@@ -13,26 +14,47 @@ import (
 // this test checks for potential race condition where one go routine moves cpus to a pool and another changes a power
 // profile of the target pool
 func TestConcurrentMoveCpusSetProfile(t *testing.T) {
+	typecopy := CpuTypeReferences
 	const count = 5
 	for i := 0; i < count; i++ {
 		doConcurrentMoveCPUSetProfile(t)
 	}
+	// reset feature list
+	for _, status := range featureList {
+		status.err = uninitialisedErr
+	}
+	CpuTypeReferences = typecopy
+
 }
 
 func doConcurrentMoveCPUSetProfile(t *testing.T) {
 	const numCpus = 88
+	emin := "11100"
+	emax := "5550000"
 	cpuConfig := map[string]string{
-		"min":                 "111",
-		"max":                 "999",
+		"min":                 "11100",
+		"max":                 "9990000",
 		"driver":              "intel_pstate",
 		"available_governors": "performance",
 		"epp":                 "performance",
 	}
+
+	ecoreConfig := map[string]string{}
+	maps.Copy(ecoreConfig, cpuConfig)
+	ecoreConfig["min"] = emin
+	ecoreConfig["max"] = emax
+
 	cpuConfigAll := map[string]map[string]string{}
 
 	cpuTopologyMap := map[string]map[string]string{}
 	for i := 0; i < numCpus; i++ {
-		cpuConfigAll[fmt.Sprint("cpu", i)] = cpuConfig
+		// set e cores
+		if i > numCpus/2 {
+			cpuConfigAll[fmt.Sprint("cpu", i)] = ecoreConfig
+		} else {
+			// set p cores
+			cpuConfigAll[fmt.Sprint("cpu", i)] = cpuConfig
+		}
 		// for this test we don't care about topology, so we just emulate 1 pkg, 1 die, numCpus cores, no hyperthreading
 		cpuTopologyMap[fmt.Sprint("cpu", i)] = map[string]string{
 			"pkg":  "0",
@@ -55,7 +77,7 @@ func doConcurrentMoveCPUSetProfile(t *testing.T) {
 	assert.ElementsMatch(t, *instance.GetReservedPool().Cpus(), *instance.GetAllCpus())
 	assert.Empty(t, *instance.GetSharedPool().Cpus())
 
-	profile, err := NewPowerProfile("pwr", 100, 1000, "performance", "performance")
+	profile, err := NewEcorePowerProfile("pwr", 100, 1000, 100, 500, "performance", "performance")
 	assert.NoError(t, err)
 
 	moveCoresErrChan := make(chan error)
@@ -105,12 +127,12 @@ func verifyPowerProfile(cpuId uint, profile Profile) error {
 
 	maxFreq, err := readCpuUintProperty(cpuId, scalingMaxFile)
 	allerrs = append(allerrs, err)
-	if maxFreq != profile.MaxFreq() {
+	if maxFreq != profile.MaxFreq() && maxFreq != profile.EfficientMaxFreq() {
 		allerrs = append(allerrs, fmt.Errorf("maxFreq mismatch expected %d, current %d", profile.MaxFreq(), maxFreq))
 	}
 	minFreq, err := readCpuUintProperty(cpuId, scalingMinFile)
 	allerrs = append(allerrs, err)
-	if minFreq != profile.MinFreq() {
+	if minFreq != profile.MinFreq() && minFreq != profile.EfficientMinFreq() {
 		allerrs = append(allerrs, fmt.Errorf("minFreq mismatch expected %d, current %d", profile.MinFreq(), minFreq))
 	}
 	return errors.Join(allerrs...)

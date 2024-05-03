@@ -1,13 +1,14 @@
 package power
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 )
 
 type mockCpuTopology struct {
@@ -223,6 +224,48 @@ func (m *mockCpuDie) Core(id uint) Core {
 	return r0
 }
 
+type mockCpuCore struct {
+	mock.Mock
+	Core
+}
+
+func (m *mockCpuCore) GetType() uint {
+	return m.Called().Get(0).(uint)
+}
+
+func (m *mockCpuCore) setType(t uint) {
+
+}
+
+func (m *mockCpuCore) addCpu(cpuId uint) (Cpu, error) {
+	ret := m.Called(cpuId)
+
+	var r0 Cpu
+	var r1 error
+
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(Cpu)
+	}
+	r1 = ret.Error(1)
+
+	return r0, r1
+}
+
+func (m *mockCpuCore) CPUs() *CpuList {
+	ret := m.Called()
+
+	var r0 *CpuList
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*CpuList)
+
+	}
+	return r0
+}
+
+func (m *mockCpuCore) getID() uint {
+	return m.Called().Get(0).(uint)
+}
+
 func setupTopologyTest(cpufiles map[string]map[string]string) func() {
 	origBasePath := basePath
 	basePath = "testing/cpus"
@@ -235,6 +278,10 @@ func setupTopologyTest(cpufiles map[string]map[string]string) func() {
 	for cpuName, cpuDetails := range cpufiles {
 		cpudir := filepath.Join(basePath, cpuName)
 		err := os.MkdirAll(filepath.Join(cpudir, "topology"), os.ModePerm)
+		if err != nil {
+			panic(err)
+		}
+		err = os.MkdirAll(filepath.Join(cpudir, "cpufreq"), os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
@@ -255,6 +302,10 @@ func setupTopologyTest(cpufiles map[string]map[string]string) func() {
 				if err != nil {
 					panic(err)
 				}
+			case "max":
+				os.WriteFile(filepath.Join(cpudir, cpuMaxFreqFile), []byte(value+"\n"), 0644)
+			case "min":
+				os.WriteFile(filepath.Join(cpudir, cpuMinFreqFile), []byte(value+"\n"), 0644)
 			}
 		}
 	}
@@ -301,41 +352,57 @@ func (s *topologyTestSuite) TestCpuImpl_discoverTopology() {
 			"pkg":  "0",
 			"die":  "0",
 			"core": "0",
+			"max":  "900000",
+			"min":  "10000",
 		},
 		"cpu1": {
 			"pkg":  "0",
 			"die":  "0",
 			"core": "1",
+			"max":  "900000",
+			"min":  "10000",
 		},
 		"cpu2": {
 			"pkg":  "1",
 			"die":  "0",
 			"core": "0",
+			"max":  "900000",
+			"min":  "10000",
 		},
 		"cpu3": {
 			"pkg":  "1",
 			"die":  "0",
 			"core": "1",
+			"max":  "900000",
+			"min":  "10000",
 		},
 		"cpu4": {
 			"pkg":  "0",
 			"die":  "0",
 			"core": "0",
+			"max":  "500000",
+			"min":  "10000",
 		},
 		"cpu5": {
 			"pkg":  "0",
 			"die":  "0",
 			"core": "1",
+			"max":  "500000",
+			"min":  "10000",
 		},
 		"cpu6": {
 			"pkg":  "1",
 			"die":  "0",
 			"core": "0",
+			"max":  "500000",
+			"min":  "10000",
 		},
 		"cpu7": {
 			"pkg":  "1",
 			"die":  "0",
 			"core": "1",
+			"max":  "500000",
+			"min":  "10000",
 		},
 	})
 	defer teardown()

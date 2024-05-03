@@ -7,17 +7,34 @@ import (
 	"sync"
 )
 
+// uints are references to an array index of frequency sets
+type supportedCores struct {
+	pcore uint
+	ecore uint
+}
+
+func (c *supportedCores) Pcore() uint {
+	return c.pcore
+}
+func (c *supportedCores) Ecore() uint {
+	return c.ecore
+}
+
+// public instance with read only access to supported core types
+var CpuTypeReferences = supportedCores{}
+
 // Cpu represents a compute unit/thread as seen by the OS
 // it is either a physical core ot virtual thread if hyperthreading/SMT is enabled
 type Cpu interface {
 	GetID() uint
+	GetAbsMinMax() (uint, uint)
 	SetPool(pool Pool) error
 
 	getPool() Pool
 	doSetPool(pool Pool) error
 	consolidate() error
 	consolidate_unsafe() error
-
+	GetCore() Core
 	// C-States stuff
 	SetCStates(cStates CStates) error
 
@@ -29,12 +46,20 @@ type cpuImpl struct {
 	id    uint
 	mutex sync.Locker
 	pool  Pool
-	core  *cpuCore
+	core  Core
 	// C-States properties
 	cStates *CStates
 }
 
-func newCpu(coreID uint, core *cpuCore) (Cpu, error) {
+func newCpu(coreID uint, core Core) (Cpu, error) {
+	if featureList.isFeatureIdSupported(FrequencyScalingFeature) {
+		min, max, err := readCpuFreqLimits(coreID)
+		if err != nil {
+			return &cpuImpl{}, err
+		}
+		cType := coreTypes.appendIfUnique(min, max)
+		core.setType(cType)
+	}
 	cpu := &cpuImpl{
 		id:    coreID,
 		mutex: &sync.Mutex{},
@@ -58,9 +83,6 @@ func (cpu *cpuImpl) consolidate_unsafe() error {
 	}
 	return nil
 }
-
-
-
 
 // SetPool moves current core to a specified target pool
 // allowed movements are reservedPoolType <-> sharedPoolType and sharedPoolType <-> any exclusive pool
@@ -116,7 +138,7 @@ func (cpu *cpuImpl) SetPool(targetPool Pool) error {
 func (cpu *cpuImpl) doSetPool(pool Pool) error {
 	cpu.pool.poolMutex().Lock()
 	pool.poolMutex().Lock()
-	log.V(4).Info("acquired mutexes", "source", cpu.pool.Name(), "target", pool.Name(), "cpu")
+	log.V(4).Info("acquired mutexes", "source", cpu.pool.Name(), "target", pool.Name(), "cpu", cpu.id)
 
 	origPool := cpu.pool
 	cpu.pool = pool
@@ -154,6 +176,19 @@ func (cpu *cpuImpl) GetID() uint {
 	return cpu.id
 }
 
+func (cpu *cpuImpl) GetAbsMinMax() (uint, uint) {
+	// return 0,0 to prevent indexing error on coretype
+	if !featureList.isFeatureIdSupported(FrequencyScalingFeature) {
+		return 0, 0
+	}
+	typeNum := cpu.core.GetType()
+	return coreTypes[typeNum].GetMin(), coreTypes[typeNum].GetMax()
+}
+
+func (cpu *cpuImpl) GetCore() Core {
+	return cpu.core
+}
+
 func (cpu *cpuImpl) _setPoolProperty(pool Pool) {
 	cpu.pool = pool
 }
@@ -173,6 +208,19 @@ func readCpuStringProperty(cpuID uint, file string) (string, error) {
 	}
 	value = strings.TrimSuffix(value, "\n")
 	return value, nil
+}
+
+// reads the min and max frequency of a CPU
+func readCpuFreqLimits(id uint) (uint, uint, error) {
+	maxFreq, err := readCpuUintProperty(id, cpuMaxFreqFile)
+	if err != nil {
+		return 0, 0, err
+	}
+	minFreq, err := readCpuUintProperty(id, cpuMinFreqFile)
+	if err != nil {
+		return 0, 0, err
+	}
+	return minFreq, maxFreq, nil
 }
 
 type CpuList []Cpu
