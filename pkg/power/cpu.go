@@ -7,6 +7,10 @@ import (
 	"sync"
 )
 
+const (
+	numOfSupportedCoreTypes uint = 2
+)
+
 // uints are references to an array index of frequency sets
 type supportedCores struct {
 	pcore uint

@@ -90,8 +90,8 @@ func initHost(nodeName string) (Host, error) {
 		defaultPowerProfile.efficientMax = coreTypes[CpuTypeReferences.Ecore()].GetMax()
 		defaultPowerProfile.efficientMin = coreTypes[CpuTypeReferences.Ecore()].GetMax()
 	}
-	if host.NumCoreTypes() > 2 {
-		log.Error(fmt.Errorf("more than 2 core types detected. This may result in undefined behavior: %v", coreTypes), "topology issues detected")
+	if host.NumCoreTypes() > numOfSupportedCoreTypes {
+		log.Error(fmt.Errorf("more than %d core types detected. This may result in undefined behavior: %v", numOfSupportedCoreTypes, coreTypes), "topology issues detected")
 	}
 	host.topology = topology
 
