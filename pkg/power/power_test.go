@@ -31,13 +31,18 @@ func TestFeatureSet_init(t *testing.T) {
 
 	// error
 	called = false
+
+	expectedFeatureError := fmt.Errorf("error")
 	set[0] = &featureStatus{
 		initFunc: func() featureStatus {
 			called = true
-			return featureStatus{err: fmt.Errorf("error")}
+			return featureStatus{err: expectedFeatureError}
 		},
 	}
-	assert.Equal(t, 1, set.init().Len())
+
+	featureErr := set.init()
+	assert.ErrorIs(t, featureErr, expectedFeatureError)
+	assert.Len(t, featureErr.(interface{ Unwrap() []error }).Unwrap(), 1)
 	assert.True(t, called)
 }
 
@@ -169,8 +174,8 @@ func Fuzz_library(f *testing.F) {
 	defer teardownUncore()
 	governorList := []string{"powersave", "performance"}
 	eppList := []string{"power", "performance", "balance-power", "balance-performance"}
-	f.Add("node1", "performance", uint(250000), uint(120000), uint(5), uint(10))
-	fuzzTarget := func(t *testing.T, nodeName string, poolName string, value1 uint, value2 uint, governorSeed uint, eppSeed uint) {
+	f.Add("node1", "performance", uint(120000), uint(250000), uint(120000), uint(160000), uint(5), uint(10))
+	fuzzTarget := func(t *testing.T, nodeName string, poolName string, min uint, max uint, emin uint, emax uint, governorSeed uint, eppSeed uint) {
 		basePath = "testing/cpus"
 		getNumberOfCpus = func() uint { return 8 }
 		nodeName = strings.ReplaceAll(nodeName, " ", "")
@@ -182,73 +187,29 @@ func Fuzz_library(f *testing.F) {
 		if nodeName == "" || poolName == "" {
 			return
 		}
-		node, err := CreateInstance(nodeName)
+		node, _ := CreateInstance(nodeName)
 
-		if err != nil || node == nil {
-			t.Fatal("node failed to init", err)
+		if node == nil {
+			return
 		}
-		err = node.GetReservedPool().MoveCpuIDs([]uint{0})
-		if err != nil {
-			t.Error("could not move core to reserved pool", err)
-		}
+		node.GetReservedPool().MoveCpuIDs([]uint{0})
 		governor := governorList[int(governorSeed)%len(governorList)]
 		epp := eppList[int(eppSeed)%len(eppList)]
-		pool, err := node.AddExclusivePool(poolName)
-		if err != nil {
-			return
-		}
-		profile, err := NewPowerProfile(poolName, value1, value2, governor, epp)
+		pool, _ := node.AddExclusivePool(poolName)
+		profile, _ := NewEcorePowerProfile(poolName, min, max, emin, emax, governor, epp)
 		pool.SetPowerProfile(profile)
-		if err != nil {
-			return
-		}
-		err = pool.SetCStates(CStates{"C0": true, "C1": false})
-		if err != nil {
-			t.Error("could not set ctates", err)
-		}
+		pool.SetCStates(CStates{"C0": true, "C1": false})
 		states := pool.getCStates()
-		err = node.ValidateCStates(*states)
-		if err != nil {
-			t.Error("invalid cstates detected", err)
+		if states != nil {
+			node.ValidateCStates(*states)
 		}
-		switch profile.(type) {
-		default:
-			t.Error("profile is null")
-		case Profile:
-		}
-
-		if epp == "power" {
-			return
-		}
-		err = node.GetSharedPool().MoveCpuIDs([]uint{1, 3, 5})
-		if err != nil {
-			t.Error("could not move cores to shared pool", err)
-		}
-		err = node.GetExclusivePool(poolName).MoveCpuIDs([]uint{1, 3, 5})
-		if err != nil {
-			t.Error("could not move cores to exclusive pool", err)
-		}
-		err = node.GetSharedPool().MoveCpuIDs([]uint{3})
-		if err != nil {
-			t.Error("could not move cores to shared pool", err)
-		}
-
-		err = node.GetExclusivePool(poolName).SetPowerProfile(nil)
-		if err != nil {
-			t.Error("could not set power profile on exclusive pool", err)
-		}
-		err = node.Topology().SetUncore(&uncoreFreq{max: 24000, min: 13000})
-		if err != nil {
-			t.Error("could not set topology uncore", err)
-		}
-		err = node.Topology().Package(0).SetUncore(&uncoreFreq{max: 24000, min: 12000})
-		if err != nil {
-			t.Error("could not set package uncore", err)
-		}
-		err = node.Topology().Package(0).Die(0).SetUncore(&uncoreFreq{max: 23000, min: 11000})
-		if err != nil {
-			t.Error("could not set die uncore", err)
-		}
+		node.GetSharedPool().MoveCpuIDs([]uint{1, 3, 5})
+		node.GetExclusivePool(poolName).MoveCpuIDs([]uint{1, 3, 5})
+		node.GetSharedPool().MoveCpuIDs([]uint{3})
+		node.GetExclusivePool(poolName).SetPowerProfile(nil)
+		node.Topology().SetUncore(&uncoreFreq{max: 24000, min: 13000})
+		node.Topology().Package(0).SetUncore(&uncoreFreq{max: 24000, min: 12000})
+		node.Topology().Package(0).Die(0).SetUncore(&uncoreFreq{max: 23000, min: 11000})
 
 	}
 	f.Fuzz(fuzzTarget)

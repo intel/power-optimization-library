@@ -1,6 +1,7 @@
 package power
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -9,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"github.com/hashicorp/go-multierror"
 )
 
 var basePath = "/sys/devices/system/cpu"
@@ -17,9 +17,8 @@ var basePath = "/sys/devices/system/cpu"
 type featureID uint
 
 const (
-	sharedPoolName   = "sharedPool"
-	reservedPoolName = "reservedPool"
-
+	sharedPoolName                    = "sharedPool"
+	reservedPoolName                  = "reservedPool"
 	FrequencyScalingFeature featureID = iota
 	EPPFeature
 	CStatesFeature
@@ -74,7 +73,6 @@ func (f *featureStatus) Driver() string {
 func (f *featureStatus) FeatureError() error {
 	return f.err
 }
-
 func (f *featureStatus) isSupported() bool {
 	return f.err == nil
 }
@@ -83,19 +81,18 @@ func (f *featureStatus) isSupported() bool {
 // on current system
 type FeatureSet map[featureID]*featureStatus
 
-// initialise all defined features, return multierror for each failed feature
-func (set *FeatureSet) init() *multierror.Error {
-	var allErrors *multierror.Error
+// initialise all defined features, return multiple errors for each failed feature
+func (set *FeatureSet) init() error {
 	if len(*set) == 0 {
-		return multierror.Append(allErrors, fmt.Errorf("no features defined"))
+		return fmt.Errorf("no features defined")
 	}
+	allErrors := make([]error, 0, len(*set))
 	for id, status := range *set {
 		feature := status.initFunc()
 		(*set)[id] = &feature
-		// this already checks for nil
-		allErrors = multierror.Append(allErrors, feature.err)
+		allErrors = append(allErrors, feature.err)
 	}
-	return allErrors
+	return errors.Join(allErrors...)
 }
 
 // anySupported checks if any of the defined featured is supported on current machine
@@ -133,15 +130,14 @@ func (set *FeatureSet) getFeatureIdError(id featureID) error {
 // if non-fatal error occurred Host object and error are returned
 func CreateInstance(hostName string) (Host, error) {
 	allErrors := featureList.init()
-
 	if !featureList.anySupported() {
 		return nil, allErrors
 	}
 	host, err := initHost(hostName)
 	if err != nil {
-		return nil, multierror.Append(allErrors, err)
+		return nil, errors.Join(allErrors, err)
 	}
-	return host, allErrors.ErrorOrNil()
+	return host, allErrors
 }
 func CreateInstanceWithConf(hostname string, conf LibConfig) (Host, error) {
 	if conf.CpuPath != "" {
@@ -162,7 +158,6 @@ var getNumberOfCpus = func() uint {
 	if err != nil {
 		return uint(runtime.NumCPU())
 	}
-
 	// Delete \n character and split the string to get
 	// first and last element
 	cpusAvailable = strings.Replace(cpusAvailable, "\n", "", -1)
@@ -170,7 +165,6 @@ var getNumberOfCpus = func() uint {
 	if len(cpuSlice) < 2 {
 		return uint(runtime.NumCPU())
 	}
-
 	// Calculate number of CPUs, if an error occurs
 	// return the number of CPUs from runtime
 	firstElement, err := strconv.Atoi(cpuSlice[0])

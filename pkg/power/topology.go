@@ -13,6 +13,10 @@ type topologyTypeObj interface {
 	getID() uint
 }
 
+// this stores the frequencies of core types
+// cores can refer to this object using an array index
+var coreTypes CoreTypeList
+
 // parent struct to store system topology
 type (
 	cpuTopology struct {
@@ -37,7 +41,6 @@ func (s *cpuTopology) addCpu(cpuId uint) (Cpu, error) {
 	if socketId, err = readCpuUintProperty(cpuId, packageIdFile); err != nil {
 		return nil, err
 	}
-
 	if socket, exists := s.packages[socketId]; exists {
 		cpu, err = socket.addCpu(cpuId)
 	} else {
@@ -58,6 +61,10 @@ func (s *cpuTopology) addCpu(cpuId uint) (Cpu, error) {
 
 func (s *cpuTopology) CPUs() *CpuList {
 	return &s.allCpus
+}
+
+func (s *cpuTopology) CoreTypes() CoreTypeList {
+	return coreTypes
 }
 
 func (s *cpuTopology) Packages() *[]Package {
@@ -217,11 +224,22 @@ type (
 		parentDie Die
 		id        uint
 		cpus      CpuList
+		// an array index pointing to a frequency set
+		coreType uint
 	}
 	Core interface {
 		topologyTypeObj
+		typeSetter
 	}
 )
+
+func (c *cpuCore) GetType() uint {
+	return c.coreType
+}
+
+func (c *cpuCore) setType(t uint) {
+	c.coreType = t
+}
 
 func (c *cpuCore) addCpu(cpuId uint) (Cpu, error) {
 	cpu, err := newCpu(cpuId, c)

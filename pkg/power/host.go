@@ -29,11 +29,12 @@ type Host interface {
 	GetAllExclusivePools() *PoolList
 
 	GetAllCpus() *CpuList
+	GetFreqRanges() CoreTypeList
 	Topology() Topology
-
+	// returns number of distinct core types
+	NumCoreTypes() uint
 	AvailableCStates() []string
 	ValidateCStates(states CStates) error
-	//IsCStateValid(s string) bool
 }
 
 // create a pre-populated Host object
@@ -65,9 +66,33 @@ func initHost(nodeName string) (Host, error) {
 	for _, cpu := range *topology.CPUs() {
 		cpu._setPoolProperty(host.reservedPool)
 	}
-
+	// not very pretty but finds the lowest/highest core ranges
+	var highest uint
+	var highIndex uint
+	var lowIndex uint
+	for i, frequencies := range coreTypes {
+		if frequencies.GetMax() > highest {
+			highest = frequencies.GetMax()
+			lowIndex = highIndex
+			highIndex = uint(i)
+		}
+		if frequencies.GetMax() < highest {
+			lowIndex = uint(i)
+		}
+	}
+	CpuTypeReferences.pcore = highIndex
+	CpuTypeReferences.ecore = lowIndex
 	log.Info("discovered cpus", "cpus", len(*topology.CPUs()))
-
+	// coretypes are populated after default profile is generated so we need to update here
+	if featureList.isFeatureIdSupported(FrequencyScalingFeature) && host.NumCoreTypes() == 2 {
+		defaultPowerProfile.max = coreTypes[CpuTypeReferences.Pcore()].GetMax()
+		defaultPowerProfile.min = coreTypes[CpuTypeReferences.Pcore()].GetMax()
+		defaultPowerProfile.efficientMax = coreTypes[CpuTypeReferences.Ecore()].GetMax()
+		defaultPowerProfile.efficientMin = coreTypes[CpuTypeReferences.Ecore()].GetMax()
+	}
+	if host.NumCoreTypes() > numOfSupportedCoreTypes {
+		log.Error(fmt.Errorf("more than %d core types detected. This may result in undefined behavior: %v", numOfSupportedCoreTypes, coreTypes), "topology issues detected")
+	}
 	host.topology = topology
 
 	// create a shallow copy of pointers, changes to underlying cpu object will reflect in both lists,
@@ -87,6 +112,11 @@ func (host *hostImpl) GetName() string {
 
 func (host *hostImpl) GetReservedPool() Pool {
 	return host.reservedPool
+}
+
+// returns default min/max frequency range
+func (host *hostImpl) GetFreqRanges() CoreTypeList {
+	return coreTypes
 }
 
 // AddExclusivePool creates new empty pool
@@ -126,6 +156,10 @@ func (host *hostImpl) GetAllCpus() *CpuList {
 
 func (host *hostImpl) GetAllExclusivePools() *PoolList {
 	return &host.exclusivePools
+}
+
+func (host *hostImpl) NumCoreTypes() uint {
+	return uint(len(coreTypes))
 }
 
 func (host *hostImpl) Topology() Topology {

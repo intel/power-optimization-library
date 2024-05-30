@@ -129,6 +129,12 @@ All frequency values are in kHz
 ````go
 performanceProfile, err := NewPowerProfile("powerProfile", 2_600_000, 2_800_000, "performance", "performance")
 ````
+You can also use the ``NewEcorePowerProfile(name, minFreq, maxFreq, emin, emax, governor, epp)`` constructor to
+create a profile that supports environments with performance and efficiency cores.
+
+````go
+performanceProfile, err := NewEcorePowerProfile("powerProfile", 2_600_000, 2_800_000, 1_600_000, 1_800_000 "performance", "performance")
+````
 
 All values and support by hardware is validated during Profile creation.
 

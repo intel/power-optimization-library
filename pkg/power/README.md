@@ -113,6 +113,8 @@ value of the name and not the actual Power Profile, that can be retrieved throug
 
 The Profile object is a replica of the Power Profile CRD. It’s just a way that the Power
 Library can get the information about a Power Profile without having to constantly query the Kubernetes API.
+The NewEcorePowerProfile constructor has 2 extra frequency fields called ``emin`` and ``emax`` and generates a profile
+that will set different frequencies based on the core type. This is intended to be used on systems that have performance and efficiency cores.
 
 ## CPU
 
